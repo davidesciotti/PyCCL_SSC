@@ -64,7 +64,7 @@ plt.show()
 
 #Import look-up tables for IAs
 
-IAFILE = np.genfromtxt('InputFiles/scaledmeanlum-E2Sa.dat')
+IAFILE = np.genfromtxt('input/scaledmeanlum-E2Sa.dat')
 FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1+IAFILE[:, 0])**(-0.41) * IAFILE[:, 1]**2.17
 
 # Computes the WL (w/ and w/o IAs) and GCph kernels
