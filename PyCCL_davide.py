@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import pyccl as ccl
+from scipy.special import erf
+
 
 from pathlib import Path
 import time
