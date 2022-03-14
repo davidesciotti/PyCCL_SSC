@@ -9,9 +9,6 @@ import time
 # get project directory
 path = Path.cwd().parent.parent
 
-# import configuration and functions modules
-sys.path.append(str(path.parent / 'my_module'))
-import my_module as mm
 
 start_time = time.perf_counter()
 
