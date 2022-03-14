@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="StickySelectionHighlights">
+    <option name="editorHighlights">
+      <map>
+        <entry key="$PROJECT_DIR$/bin/PyCCL_test.py">
+          <value>
+            <PaintGroupHighlightMap>
+              <option name="paintGroups">
+                <map>
+                  <entry key="0">
+                    <value>
+                      <EditorHighlightsForPaintGroup>
+                        <option name="highlights">
+                          <list>
+                            <HighlightOffset>
+                              <option name="start" value="889" />
+                              <option name="end" value="892" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="978" />
+                              <option name="end" value="981" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="1003" />
+                              <option name="end" value="1006" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="1015" />
+                              <option name="end" value="1018" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2491" />
+                              <option name="end" value="2494" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2667" />
+                              <option name="end" value="2670" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2741" />
+                              <option name="end" value="2744" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2758" />
+                              <option name="end" value="2761" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2764" />
+                              <option name="end" value="2767" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2787" />
+                              <option name="end" value="2790" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2793" />
+                              <option name="end" value="2796" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2835" />
+                              <option name="end" value="2838" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2907" />
+                              <option name="end" value="2910" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3256" />
+                              <option name="end" value="3259" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3262" />
+                              <option name="end" value="3265" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3333" />
+                              <option name="end" value="3336" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3339" />
+                              <option name="end" value="3342" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3550" />
+                              <option name="end" value="3553" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2430" />
+                              <option name="end" value="2435" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3059" />
+                              <option name="end" value="3064" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="2426" />
+                              <option name="end" value="2436" />
+                            </HighlightOffset>
+                            <HighlightOffset>
+                              <option name="start" value="3055" />
+                              <option name="end" value="3065" />
+                            </HighlightOffset>
+                          </list>
+                        </option>
+                      </EditorHighlightsForPaintGroup>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </PaintGroupHighlightMap>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
