@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/PyCCL_SSC.iml" filepath="$PROJECT_DIR$/.idea/PyCCL_SSC.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../Lavoro/Programmi/SSC_restructured/.idea/SSC_restructured.iml" filepath="$PROJECT_DIR$/../../Lavoro/Programmi/SSC_restructured/.idea/SSC_restructured.iml" />
     </modules>
   </component>
 </project>

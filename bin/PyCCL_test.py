@@ -57,10 +57,10 @@ nziEuclid = np.array([nzEuclid
                                   (ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigmab))
                       ) for iz in range(Nbins)])
 
-plt.xlabel('$z$')
-plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
-[plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
-plt.show()
+# plt.xlabel('$z$')
+# plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
+# [plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
+# plt.show()
 
 # Import look-up tables for IAs
 
@@ -72,7 +72,7 @@ FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1 + IAFILE[:, 0]) ** (-0.41) * IAFIL
 # WCS = [ ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz])) for iz in range(Nbins) ]
 
 FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Omega_b) / ccl.growth_factor(cosmo, 1 / (
-            1 + IAFILE[:, 0]))
+        1 + IAFILE[:, 0]))
 WL = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
       range(Nbins)]
 
@@ -85,7 +85,9 @@ klist = PkFILE[:int(len(PkFILE[:, 2]) / len(zlist)), 1] * cosmo.cosmo.params.h
 Pklist = PkFILE[:, 3].reshape(len(zlist), len(klist)) / cosmo.cosmo.params.h ** 3
 
 # Create a Pk2D object
-Pk = ccl.Pk2D(a_arr=1 / (1 + zlist[::-1]), lk_arr=np.log(klist), pk_arr=Pklist, is_logp=False)
+a_arr = 1 / (1 + zlist[::-1])
+lk_arr = np.log(klist)
+Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
 ell = np.geomspace(10, 5000, 20)
 
@@ -96,5 +98,42 @@ A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
 n_gal = 30 * (180 * 60 / np.pi) ** 2
 sigma_e = 0.3
+
+# TODO we have no clue about the values of Delta and rho_type
+names = 'Bhattacharya13'
+# mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation='names')
+
+# from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
+mass_def = ccl.halos.massdef.MassDef200c(c_m='Duffy08')
+
+# TODO pass mass_def object? plus, understand what the hell is mass_def_strict
+massfunc = ccl.halos.hmfunc.MassFunc(cosmo, mass_def=None, mass_def_strict=True)
+
+hbias = ccl.halos.hbias.HaloBias(cosmo, mass_def=None, mass_def_strict=True)
+
+hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
+                                        log10M_min=8.0, log10M_max=16.0, nlog10M=128,
+                                        integration_method_M='simpson', k_min=1e-05)
+
+# TODO pick a non-random one from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.profiles.html#pyccl.halos.profiles.HaloProfile
+prof_GNFW = ccl.halos.profiles.HaloProfilePressureGNFW(mass_bias=0.8, P0=6.41, c500=1.81, alpha=1.33, alpha_P=0.12,
+                                                       beta=4.13,
+                                                       gamma=0.31, P0_hexp=-1.0, qrange=(0.001, 1000.0), nq=128,
+                                                       x_out=np.inf)
+
+# from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=trispectrum#pyccl.halos.halo_model.halomod_Tk3D_SSC
+tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc, prof1=prof_GNFW, prof2=None, prof12_2pt=None, prof3=None,
+                                             prof4=None, prof34_2pt=None, normprof1=False, normprof2=False,
+                                             normprof3=False, normprof4=False,
+                                             p_of_k_a=Pk, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
+                                             extrap_order_hik=1, use_log=False)
+
+print('done')
+
+cltracer1 = CLL
+# from https://ccl.readthedocs.io/en/latest/api/pyccl.core.html?highlight=trispectrum#pyccl.core.Cosmology.angular_cl_cov_SSC
+# cov_SSC_wishfulthinking = ccl.angular_cl_cov_SSC(cltracer1=CLL, cltracer2=CLL, ell, tkka, sigma2_B=None, fsky=1.0, cltracer3=CLL,
+#                                              cltracer4=CLL, ell2=None, integration_method='qag_quad')
+
 
 print('done')
