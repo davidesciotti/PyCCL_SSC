@@ -1,11 +1,10 @@
-import numpy as np
+import time
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-import sys
+import numpy as np
 import pyccl as ccl
 from scipy.special import erf
-
-from pathlib import Path
-import time
 
 # get project directory
 project_path = Path.cwd().parent
@@ -34,9 +33,10 @@ markersize = 10
 cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.05, w0=-1, wa=0, h=0.67, sigma8=0.815583, n_s=0.96, m_nu=0.06,
                       Omega_k=1 - (0.27 + 0.05) - 0.68)
 
+nbl = 20
+
 # Define redshift distribution of sources kernels
 ztab = np.arange(0, 2.5, 0.001)
-
 zmin, zmax = 0.001, 2.5
 zi = np.array([
     [zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
@@ -57,9 +57,9 @@ nziEuclid = np.array([nzEuclid
                                   (ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigmab))
                       ) for iz in range(Nbins)])
 
-# plt.xlabel('$z$')
-# plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
-# [plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
+plt.xlabel('$z$')
+plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
+[plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
 # plt.show()
 
 # Import look-up tables for IAs
@@ -76,6 +76,7 @@ FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Om
 WL = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
       range(Nbins)]
 
+
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
 
@@ -89,10 +90,12 @@ a_arr = 1 / (1 + zlist[::-1])
 lk_arr = np.log(klist)
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
-ell = np.geomspace(10, 5000, 20)
+ell = np.geomspace(10, 5000, nbl)
+
 
 CLL = np.array(
     [[ccl.angular_cl(cosmo, WL[iz], WL[jz], ell, p_of_k_a=Pk) for iz in range(Nbins)] for jz in range(Nbins)])
+
 
 A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
@@ -100,16 +103,22 @@ n_gal = 30 * (180 * 60 / np.pi) ** 2
 sigma_e = 0.3
 
 # TODO we have no clue about the values of Delta and rho_type
-names = 'Bhattacharya13'
-# mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation='names')
+# name = 'Bhattacharya13'
+# mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
 
 # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
 mass_def = ccl.halos.massdef.MassDef200c(c_m='Duffy08')
 
 # TODO pass mass_def object? plus, understand what the hell is mass_def_strict
-massfunc = ccl.halos.hmfunc.MassFunc(cosmo, mass_def=None, mass_def_strict=True)
+# mass_def must not be None
+# don't use a default MassFunction or HaloBias classes, they're probably abstract classes
+# it's all default settings except for mass_def
 
-hbias = ccl.halos.hbias.HaloBias(cosmo, mass_def=None, mass_def_strict=True)
+# massfunc = ccl.halos.hmfunc.MassFunc(cosmo, mass_def=mass_def, mass_def_strict=True)
+massfunc = ccl.halos.hmfunc.MassFuncTinker08(cosmo, mass_def=mass_def, mass_def_strict=True)
+
+# hbias = ccl.halos.hbias.HaloBias(cosmo, mass_def=mass_def, mass_def_strict=True)
+hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
 
 hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
                                         log10M_min=8.0, log10M_max=16.0, nlog10M=128,
@@ -128,9 +137,26 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc, prof1=prof_GNFW, prof2=
                                              p_of_k_a=Pk, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
                                              extrap_order_hik=1, use_log=False)
 
-print('done')
+cov_SSC = np.zeros(())
+# TODO correct fsky?
+for i in range(Nbins):
+    for j in range(Nbins):
+        for k in range(Nbins):
+            for l in range(Nbins):
+                cltracer1, cltracer2 = CLL, CLL
 
-cltracer1 = CLL
+                WL_i = ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[i]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
+                WL_j = ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[j]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
+                WL_k = ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[k]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
+                WL_l = ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[l]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
+
+                CLL_ij = ccl.angular_cl(cosmo, WL_i, WL_j, ell, p_of_k_a=Pk)
+                CLL_kl = ccl.angular_cl(cosmo, WL_k, WL_l, ell, p_of_k_a=Pk)
+
+                cov_SSC[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, CLL_ij, CLL_kl, ell, tkka, sigma2_B=None, fsky=0.37,
+                                                   cltracer3=None, cltracer4=None, ell2=None, integration_method='qag_quad')
+
+
 # from https://ccl.readthedocs.io/en/latest/api/pyccl.core.html?highlight=trispectrum#pyccl.core.Cosmology.angular_cl_cov_SSC
 # cov_SSC_wishfulthinking = ccl.angular_cl_cov_SSC(cltracer1=CLL, cltracer2=CLL, ell, tkka, sigma2_B=None, fsky=1.0, cltracer3=CLL,
 #                                              cltracer4=CLL, ell2=None, integration_method='qag_quad')
