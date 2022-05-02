@@ -35,6 +35,11 @@ markersize = 10
 ###############################################################################
 ###############################################################################
 
+# ! ISSUES:
+# 1. input files (WF, ell, a, pk...)
+# 2. halo model recipe
+# 3. ordering of the resulting covariance matrix
+
 # define fsky Euclid
 survey_area = 15000  # deg^2
 deg2_in_sphere = 41252.96  # deg^2 in a spere
@@ -208,6 +213,8 @@ for i in range(zbins):
 
         print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
 
+# ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
+
 mm.matshow(cov_PyCCL_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PyCCL_6D')
 
 # SAVE
@@ -237,11 +244,11 @@ mm.matshow(cov_Robin_4D[:, :, 0, 0], log=True, title='cov_Robin_4D')
 mm.matshow(cov_PyCCL_4D[:, :, 0, 0], log=True, title='cov_PyCCL_4D')
 
 # compute and plot percent difference (not in log scale)
-rob_over_PyCCL = mm.percent_diff(cov_Robin_4D, cov_PyCCL_4D)
-rob_over_PySSC = mm.percent_diff(cov_Robin_4D, cov_PySSC_4D)
+rob_vs_PyCCL = mm.percent_diff(cov_Robin_4D, cov_PyCCL_4D)
+rob_vs_PySSC = mm.percent_diff(cov_Robin_4D, cov_PySSC_4D)
 
-mm.matshow(rob_over_PyCCL[:, :, 0, 0], log=False, title='rob_over_PyCCL')
-mm.matshow(rob_over_PySSC[:, :, 0, 0], log=False, title='rob_over_PySSC')
+mm.matshow(rob_vs_PyCCL[:, :, 0, 0], log=False, title='rob_vs_PyCCL [%]')
+mm.matshow(rob_vs_PySSC[:, :, 0, 0], log=False, title='rob_vs_PySSC [%]')
 
 # correlation matrix
 # corr_PyCCL = mm.correlation_from_covariance(cov_SSC[:, :, 0, 0, 0, 0])
