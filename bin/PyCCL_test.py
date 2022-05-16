@@ -35,6 +35,28 @@ markersize = 10
 ###############################################################################
 ###############################################################################
 
+def bias(z, zi):
+    zbins = len(zi[0])
+    z_minus = zi[0, :]  # lower edge of z bins
+    z_plus = zi[1, :]  # upper edge of z bins
+    z_mean = (z_minus + z_plus) / 2  # cener of the z bins
+
+    for i in range(zbins):
+        if z_minus[i] <= z < z_plus[i]:
+            return b(i, z_mean)
+        if z > z_plus[-1]:  # max redshift bin
+            return b(9, z_mean)
+
+
+def b(i, z_mean):
+    return np.sqrt(1 + z_mean[i])
+
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+
 # ! POTENTIAL ISSUES:
 # 1. input files (WF, ell, a, pk...)
 # 2. halo model recipe
@@ -68,11 +90,8 @@ fout, cb, zb, sigmab, c0, z0, sigma0 = 0.1, 1, 0, 0.05, 1, 0.1, 0.05
 nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout * (
         erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) / (1 + ztab) / sigma0)
         - erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigma0))
-                                                    + c0 * (1 - fout) * (
-                                                            erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
-                                                                    1 + ztab) / sigmab)
-                                                            - erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
-                                                            1 + ztab) / sigmab))) for iz in range(zbins)])
+        + c0 * (1 - fout) * (erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (1 + ztab) / sigmab)
+        - erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigmab))) for iz in range(zbins)])
 
 # plt.xlabel('$z$')
 # plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
@@ -92,6 +111,16 @@ FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Om
         1 + IAFILE[:, 0]))
 WL = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
       range(zbins)]
+
+# galaxy kernels
+
+# construct the bias array
+b_array = [bias(z, zi) for z in ztab]
+
+
+wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array[iz]),
+                                      mag_bias=None)
+       for iz in range(zbins)]
 
 # ztab = np.expand_dims(ztab, axis=0)
 # ztab = np.repeat(ztab, repeats=10, axis=0)
