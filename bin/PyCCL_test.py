@@ -31,6 +31,7 @@ params = {'lines.linewidth': 3.5,
 plt.rcParams.update(params)
 markersize = 10
 
+
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -52,7 +53,6 @@ def b(i, z_mean):
     return np.sqrt(1 + z_mean[i])
 
 
-
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -68,11 +68,9 @@ def b(i, z_mean):
 cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.05, w0=-1., wa=0., h=0.67, sigma8=0.815583, n_s=0.96, m_nu=0.06,
                       Omega_k=1 - (0.27 + 0.05) - 0.68)
 
-nbl = 20
-
 # Define redshift distribution of sources kernels
-ztab = np.arange(0, 2.5, 0.001)
 zmin, zmax = 0.001, 2.5
+ztab = np.arange(zmin, zmax, 0.001)  # ! should it start from 0 instead?
 zi = np.array([
     [zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
     [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]
@@ -87,11 +85,14 @@ nzEuclid = 30 * (ztab / 0.9 * np.sqrt(2)) ** 2 * np.exp(-(ztab / 0.9 * np.sqrt(2
 
 fout, cb, zb, sigmab, c0, z0, sigma0 = 0.1, 1, 0, 0.05, 1, 0.1, 0.05
 
-nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout * (
-        erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) / (1 + ztab) / sigma0)
-        - erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigma0))
-        + c0 * (1 - fout) * (erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (1 + ztab) / sigmab)
-        - erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigmab))) for iz in range(zbins)])
+nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout * (erf((ztab - z0 - c0 * zi[0, iz]) /
+                                                                     np.sqrt(2) / (1 + ztab) / sigma0)
+                                                                 - erf(
+            (ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigma0)) + c0 * (1 - fout) * (
+                                                            erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
+                                                                        1 + ztab) / sigmab) - erf(
+                                                        (ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
+                                                                1 + ztab) / sigmab))) for iz in range(zbins)])
 
 # plt.xlabel('$z$')
 # plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
@@ -112,13 +113,15 @@ FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Om
 WL = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
       range(zbins)]
 
-# galaxy kernels
+# GALAXY KERNELS
 
-# construct the bias array
-b_array = [bias(z, zi) for z in ztab]
+# construct the bias array -
+b_array = np.asarray([bias(z, zi) for z in ztab])
+# it should be the same for all redshift bins:
+# b_array = np.repeat(b_array[:, np.newaxis], zbins, axis=1)  # this is useless, I can just pass the same array each
+# time in the call below
 
-
-wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array[iz]),
+wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None)
        for iz in range(zbins)]
 
@@ -145,8 +148,9 @@ Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 which_ells = 'IST-F'
 ell_min = 10
 ell_max_WL = 5000
+nbl = 30
 
-if which_ells == 'IST-F' and nbl == 20:
+if which_ells == 'IST-F':# and nbl == 20:
     # IST:F recipe:
     ell_WL = np.logspace(np.log10(ell_min), np.log10(ell_max_WL), nbl + 1)  # WL
     # central values of each bin
@@ -175,7 +179,6 @@ CLL = np.array([[ccl.angular_cl(cosmo, WL[iz], WL[jz], ell, p_of_k_a=Pk)
 
 plt.plot(ell, CLL[0, 0, :])
 
-assert 1 > 2
 
 A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
@@ -244,8 +247,6 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              normprof1=True, normprof2=True, normprof3=True, normprof4=True,
                                              p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
                                              extrap_order_hik=1, use_log=False)
-
-
 
 cov_PyCCL_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
 # for ell2_idx, ell2 in enumerate(ell): # TODO is this necessary?
