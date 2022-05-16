@@ -35,15 +35,11 @@ markersize = 10
 ###############################################################################
 ###############################################################################
 
-# ! ISSUES:
+# ! POTENTIAL ISSUES:
 # 1. input files (WF, ell, a, pk...)
 # 2. halo model recipe
 # 3. ordering of the resulting covariance matrix
 
-# define fsky Euclid
-survey_area = 15000  # deg^2
-deg2_in_sphere = 41252.96  # deg^2 in a spere
-fsky_IST = survey_area / deg2_in_sphere
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -73,10 +69,10 @@ nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout * (
         erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) / (1 + ztab) / sigma0)
         - erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigma0))
                                                     + c0 * (1 - fout) * (
-                                                                erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
-                                                                            1 + ztab) / sigmab)
-                                                                - erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
-                                                                    1 + ztab) / sigmab))) for iz in range(zbins)])
+                                                            erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
+                                                                    1 + ztab) / sigmab)
+                                                            - erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
+                                                            1 + ztab) / sigmab))) for iz in range(zbins)])
 
 # plt.xlabel('$z$')
 # plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
@@ -116,17 +112,41 @@ a_arr = 1 / (1 + zlist[::-1])
 lk_arr = np.log(klist)  # it's the natural log, not log10
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
-# IST:F?
-# ell = np.geomspace(10, 5000, nbl)
+# choose the ell binning
+which_ells = 'IST-F'
+ell_min = 10
+ell_max_WL = 5000
 
-# IST:NL
-ell_bins = np.linspace(np.log(10.), np.log(5000.), 21)
-ell = (ell_bins[:-1] + ell_bins[1:]) / 2.
-ell = np.exp(ell)
-deltas = np.diff(np.exp(ell_bins))
+if which_ells == 'IST-F' and nbl == 20:
+    # IST:F recipe:
+    ell_WL = np.logspace(np.log10(ell_min), np.log10(ell_max_WL), nbl + 1)  # WL
+    # central values of each bin
+    l_centr_WL = (ell_WL[1:] + ell_WL[:-1]) / 2
+    # take the log10 of the values
+    logarithm_WL = np.log10(l_centr_WL)
+    # update the ell_WL, ell_GC arrays with the right values
+    ell_WL = logarithm_WL
+    # ell values in linear scale:
+    l_lin_WL = 10 ** ell_WL
+    ell = l_lin_WL
 
-CLL = np.array(
-    [[ccl.angular_cl(cosmo, WL[iz], WL[jz], ell, p_of_k_a=Pk) for iz in range(zbins)] for jz in range(zbins)])
+elif which_ells == 'IST-NL' and nbl == 20:
+    # this is slightly different
+    ell_bins = np.linspace(np.log(ell_min), np.log(ell_max_WL), nbl + 1)
+    ell = (ell_bins[:-1] + ell_bins[1:]) / 2.
+    ell = np.exp(ell)
+
+else:
+    raise ValueError('Wrong choice of ell bins: which_ells must be either IST-F or IST-NL, and '
+                     'nbl must be 20.')
+
+CLL = np.array([[ccl.angular_cl(cosmo, WL[iz], WL[jz], ell, p_of_k_a=Pk)
+                 for iz in range(zbins)]
+                for jz in range(zbins)])
+
+plt.plot(ell, CLL[0, 0, :])
+
+assert 1 > 2
 
 A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
@@ -174,7 +194,6 @@ if hm_recipe == 'KiDS_1000':
 elif hm_recipe == 'Krause_2017':
     c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # over Eq. 12
 
-
 # TODO understand better this object. We're calling the abstract class, is this ok?
 # ! HMCalculator
 hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
@@ -189,6 +208,7 @@ halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
 # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum (see documentation:
 # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
 # 🐛 bug solved: normprof shoud be True
+# 🐛 bug solved?: p_of_k_a=None instead of Pk
 tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              prof1=halo_profile, prof2=None, prof12_2pt=None,
                                              prof3=None, prof4=None, prof34_2pt=None,
@@ -197,7 +217,7 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              extrap_order_hik=1, use_log=False)
 
 
-zbins = 2
+
 cov_PyCCL_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
 # for ell2_idx, ell2 in enumerate(ell): # TODO is this necessary?
 for i in range(zbins):
@@ -206,7 +226,7 @@ for i in range(zbins):
         for k in range(zbins):
             for l in range(zbins):
                 cov_PyCCL_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, WL[i], WL[j], ell, tkka,
-                                                                                    sigma2_B=None, fsky=fsky_IST,
+                                                                                    sigma2_B=None, fsky=f_sky,
                                                                                     cltracer3=WL[k], cltracer4=WL[l],
                                                                                     ell2=None,
                                                                                     integration_method='spline')
@@ -215,28 +235,36 @@ for i in range(zbins):
 
 # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
 
-mm.matshow(cov_PyCCL_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PyCCL_6D')
-
-# SAVE
-# np.save(project_path / 'output/cov_SSC_p_of_k_a=None.npy', cov_SSC)
-
-
-ind = np.genfromtxt(
-    '/Users/davide/Documents/Lavoro/Programmi/SSC_restructured/config/common_data/ind/indici_cloe_like.dat').astype(
-    'int') - 1
+path_ind = '/Users/davide/Documents/Lavoro/Programmi/SSC_restructured/config/common_data/ind'
+ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like.dat').astype('int') - 1
 ind_LL = ind[:npairs_auto, :]
 
-# reshape
-cov_PyCCL_4D = mm.cov_6D_to_4D(cov_PyCCL_6D, nbl=nbl, npairs=npairs_auto, ind=ind_LL)
-
-# import Robin and PySSC
-cov_Robin_2D = np.load(
-    '/Users/davide/Documents/Lavoro/Programmi/SSC_paper_jan22/PySSC_vs_CosmoLike/Robin/cov_SS_full_sky_rescaled/lmax5000_noextrap/davides_reshape/cov_R_WL_SSC_lmax5000_2D.npy')
+# load CosmoLike (Robin) and PySSC
+robins_cov_path = '/Users/davide/Documents/Lavoro/Programmi/SSC_paper_jan22/PySSC_vs_CosmoLike/Robin/cov_SS_full_sky_rescaled'
+cov_Robin_2D = np.load(robins_cov_path + '/lmax5000_noextrap/davides_reshape/cov_R_WL_SSC_lmax5000_2D.npy')
 cov_PySSC_4D = np.load(project_path / 'input/CovMat-ShearShear-SSC-20bins-NL_flag_2_4D.npy')
 
 # reshape
+cov_PyCCL_4D = mm.cov_6D_to_4D(cov_PyCCL_6D, nbl=nbl, npairs=npairs_auto, ind=ind_LL)
+cov_PyCCL_2D = mm.cov_4D_to_2D(cov_PyCCL_4D, nbl=nbl, npairs_AB=npairs_auto, npairs_CD=None, block_index='vincenzo')
+
 cov_Robin_4D = mm.cov_2D_to_4D(cov_Robin_2D, nbl=nbl, npairs=npairs_auto, block_index='vincenzo')
-cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl, zbins, probe='LL', ind=ind_LL)
+cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl, zbins=10, probe='LL', ind=ind_LL)
+
+# save PyCCL
+output_path = '/Users/davide/Documents/GitHub/PyCCL_SSC/output'
+np.save(output_path / f'output/cov_PyCCL_nbl{nbl}_ells{which_ells}_6D.npy', cov_PyCCL_6D)
+np.save(output_path / f'output/cov_PyCCL_nbl{nbl}_ells{which_ells}_2D.npy', cov_PyCCL_2D)
+
+assert 1 > 2
+
+# check if the matrics are symmetric in ell1 <-> ell2
+print(np.allclose(cov_Robin_4D, cov_Robin_4D.transpose(1, 0, 2, 3), rtol=1e-10))
+print(np.allclose(cov_PyCCL_4D, cov_PyCCL_4D.transpose(1, 0, 2, 3), rtol=1e-10))
+print(np.allclose(cov_PySSC_4D, cov_PySSC_4D.transpose(1, 0, 2, 3), rtol=1e-10))
+
+mm.matshow(cov_PyCCL_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PyCCL_6D')
+mm.matshow(cov_PySSC_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PySSC_6D')
 
 # show the various versions
 mm.matshow(cov_PySSC_4D[:, :, 0, 0], log=True, title='cov_PySSC_4D')
@@ -244,22 +272,21 @@ mm.matshow(cov_Robin_4D[:, :, 0, 0], log=True, title='cov_Robin_4D')
 mm.matshow(cov_PyCCL_4D[:, :, 0, 0], log=True, title='cov_PyCCL_4D')
 
 # compute and plot percent difference (not in log scale)
-rob_vs_PyCCL = mm.percent_diff(cov_Robin_4D, cov_PyCCL_4D)
-rob_vs_PySSC = mm.percent_diff(cov_Robin_4D, cov_PySSC_4D)
+PyCCL_vs_rob = mm.compare_2D_arrays(cov_PyCCL_4D[:, :, 0, 0], cov_Robin_4D[:, :, 0, 0], 'cov_PyCCL_4D', 'cov_Robin_4D',
+                                    log_arr=True)
+PySSC_vs_PyCCL = mm.compare_2D_arrays(cov_PyCCL_4D[:, :, 0, 0], cov_PySSC_4D[:, :, 0, 0], 'cov_PyCCL_4D',
+                                      'cov_PySSC_4D', log_arr=True)
 
-mm.matshow(rob_vs_PyCCL[:, :, 0, 0], log=False, title='rob_vs_PyCCL [%]')
-mm.matshow(rob_vs_PySSC[:, :, 0, 0], log=False, title='rob_vs_PySSC [%]')
+# mm.matshow(rob_vs_PyCCL[:, :, 0, 0], log=False, title='rob_vs_PyCCL [%]')
+# mm.matshow(rob_vs_PySSC[:, :, 0, 0], log=False, title='rob_vs_PySSC [%]')
 
-# correlation matrix
-# corr_PyCCL = mm.correlation_from_covariance(cov_SSC[:, :, 0, 0, 0, 0])
-# corr_PySSC = mm.correlation_from_covariance(cov_SS_WL_old_6D[1, :, :, 0, 0, 0, 0])
-# mm.matshow(corr_PyCCL, log=True, title='PyCCL')
-# mm.matshow(corr_PySSC, log=True, title='PySSC')
+# correlation matrices
+corr_PySSC_4D = mm.correlation_from_covariance(cov_PySSC_4D[:, :, 0, 0])
+corr_Robin_4D = mm.correlation_from_covariance(cov_Robin_4D[:, :, 0, 0])
+corr_PyCCL_4D = mm.correlation_from_covariance(cov_PyCCL_4D[:, :, 0, 0])
 
-
-# from https://ccl.readthedocs.io/en/latest/api/pyccl.core.html?highlight=trispectrum#pyccl.core.Cosmology.angular_cl_cov_SSC
-# cov_SSC_wishfulthinking = ccl.angular_cl_cov_SSC(cltracer1=CLL, cltracer2=CLL, ell, tkka, sigma2_B=None, fsky=1.0, cltracer3=CLL,
-#                                              cltracer4=CLL, ell2=None, integration_method='qag_quad')
-
+corr_PyCCL_vs_rob = mm.compare_2D_arrays(corr_PyCCL_4D, corr_Robin_4D, 'corr_PyCCL_4D', 'corr_Robin_4D', log_arr=False)
+corr_PySSC_vs_PyCCL = mm.compare_2D_arrays(corr_PyCCL_4D, corr_PySSC_4D, 'corr_PyCCL_4D', 'corr_PySSC_4D',
+                                           log_arr=False)
 
 print('done')
