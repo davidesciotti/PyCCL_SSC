@@ -145,13 +145,27 @@ lk_arr = np.log(klist)  # it's the natural log, not log10
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
 # choose the ell binning
-which_ells = 'IST-F'
 ell_min = 10
 ell_max_WL = 5000
 nbl = 30
 
-# TODO why must nbl be equal to 20? was I drunk?
-if which_ells == 'IST-F' and nbl == 20:
+# ! settings
+which_ells = 'IST-F'
+compute_SS = True
+compute_cNG = False
+hm_recipe = 'KiDS_1000'
+# ! settings
+
+if which_ells == 'IST-F':
+    nbl = 30
+elif which_ells == 'IST-NL':
+    nbl = 20
+else:
+    raise ValueError('which_ells should be IST-F or IST-NL')
+
+# TODO why should nbl be equal to 20? was I drunk?
+# if which_ells == 'IST-F' and nbl == 20:
+if which_ells == 'IST-F':
     # IST:F recipe:
     ell_WL = np.logspace(np.log10(ell_min), np.log10(ell_max_WL), nbl + 1)  # WL
     # central values of each bin
@@ -164,7 +178,8 @@ if which_ells == 'IST-F' and nbl == 20:
     l_lin_WL = 10 ** ell_WL
     ell = l_lin_WL
 
-elif which_ells == 'IST-NL' and nbl == 20:
+# elif which_ells == 'IST-NL' and nbl == 20:
+elif which_ells == 'IST-NL':
     # this is slightly different
     ell_bins = np.linspace(np.log(ell_min), np.log(ell_max_WL), nbl + 1)
     ell = (ell_bins[:-1] + ell_bins[1:]) / 2.
@@ -174,11 +189,13 @@ else:
     raise ValueError('Wrong choice of ell bins: which_ells must be either IST-F or IST-NL, and '
                      'nbl must be 20.')
 
+# jsut a check on the settings
+print(f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS = {compute_SS}\ncompute_cNG = {compute_cNG}')
+
+
 CLL = np.array([[ccl.angular_cl(cosmo, WL[iz], WL[jz], ell, p_of_k_a=Pk)
                  for iz in range(zbins)]
                 for jz in range(zbins)])
-
-plt.plot(ell, CLL[0, 0, :])
 
 A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
@@ -187,7 +204,6 @@ sigma_e = 0.3
 
 # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
-
 
 # TODO we're not sure about the values of Delta and rho_type
 # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
@@ -202,38 +218,35 @@ sigma_e = 0.3
 # about the mass definition, the paper says:
 # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
 
-hm_recipe = 'KiDS_1000'
-
-# ! mass definition
+# mass definition
 if hm_recipe == 'KiDS_1000':
     c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
-elif hm_recipe == 'Krause_2017':
-    c_m = 'Bhattacharya13'  # see paper, after Eq. 1
-
-mass_def = ccl.halos.MassDef200m(c_m=c_m)
-
-# TODO pass mass_def object? plus, understand what exactly is mass_def_strict
-# mass_def must not be None
-
-# ! mass function
-massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
-
-# ! halo bias
-hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
-
-# ! concentration-mass relation
-if hm_recipe == 'KiDS_1000':
+    mass_def = ccl.halos.MassDef200m(c_m=c_m)
     c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
 elif hm_recipe == 'Krause_2017':
+    c_m = 'Bhattacharya13'  # see paper, after Eq. 1
+    mass_def = ccl.halos.MassDef200m(c_m=c_m)
     c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # over Eq. 12
+else:
+    raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS_1000" or "Krause_2017".')
+
+# TODO pass mass_def object? plus, understand what exactly is mass_def_strict
+
+# mass function
+massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+
+# halo bias
+hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+
+# concentration-mass relation
 
 # TODO understand better this object. We're calling the abstract class, is this ok?
-# ! HMCalculator
+# HMCalculator
 hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
                                         log10M_min=8.0, log10M_max=16.0, nlog10M=128,
                                         integration_method_M='simpson', k_min=1e-05)
 
-# ! halo profile
+# halo profile
 halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
                                                  fourier_analytic=True, projected_analytic=False,
                                                  cumul2d_analytic=False, truncated=True)
@@ -249,41 +262,51 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
                                              extrap_order_hik=1, use_log=False)
 
-# ! super-sample
-cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-start_SSC = time.perf_counter()
-for i in range(zbins):
-    for j in range(zbins):
-        start = time.perf_counter()
-        for k in range(zbins):
-            for l in range(zbins):
-                cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, WL[i], WL[j], ell, tkka,
-                                                                                 sigma2_B=None, fsky=f_sky,
-                                                                                 cltracer3=WL[k], cltracer4=WL[l],
-                                                                                 ell2=None,
-                                                                                 integration_method='spline')
-
-        print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
-print(f'SSC computed in  {(time.perf_counter() - start_SSC):.2f} seconds')
-
-# ! connected non-Gaussian
-cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-start_cNG = time.perf_counter()
-for i in range(zbins):
-    for j in range(zbins):
-        start = time.perf_counter()
-        for k in range(zbins):
-            for l in range(zbins):
-                cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, WL[i], WL[j], ell, tkka,
-                                                                                  fsky=f_sky, cltracer3=WL[k],
-                                                                                  cltracer4=WL[l], ell2=None,
-                                                                                  integration_method='spline')
-        print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
-print(f'connected non-Gaussian computed in  {(time.perf_counter() - start_cNG):.2f} seconds')
-
 # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
-np.save(f'{project_path}/output/cov_PyCCL_SS_nbl{nbl}_ells{which_ells}_6D.npy', cov_SS_6D)
-np.save(f'{project_path}/output/cov_PyCCL_cNG_nbl{nbl}_ells{which_ells}_6D.npy', cov_cNG_6D)
+
+# ! super-sample
+if compute_SS:
+    cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
+    start_SSC = time.perf_counter()
+    for i in range(zbins):
+        for j in range(zbins):
+            start = time.perf_counter()
+            for k in range(zbins):
+                for l in range(zbins):
+                    cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, WL[i], WL[j], ell, tkka,
+                                                                                     sigma2_B=None, fsky=f_sky,
+                                                                                     cltracer3=WL[k],
+                                                                                     cltracer4=WL[l],
+                                                                                     ell2=None,
+                                                                                     integration_method='spline')
+
+            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
+    print(f'SSC computed in  {(time.perf_counter() - start_SSC):.2f} seconds')
+    np.save(f'{project_path}/output/cov_PyCCL_SS_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_SS_6D)
+
+if compute_cNG:
+    # ! connected non-Gaussian
+    cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
+    start_cNG = time.perf_counter()
+    for i in range(zbins):
+        for j in range(zbins):
+            start = time.perf_counter()
+            for k in range(zbins):
+                for l in range(zbins):
+                    cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, WL[i], WL[j], ell,
+                                                                                      tkka, fsky=f_sky,
+                                                                                      cltracer3=WL[k],
+                                                                                      cltracer4=WL[l], ell2=None,
+                                                                                      integration_method='spline')
+            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
+    print(f'connected non-Gaussian computed in {(time.perf_counter() - start_cNG):.2f} seconds')
+
+    np.save(f'{project_path}/output/cov_PyCCL_cNG_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy',
+            cov_cNG_6D)
+
+print(f'{which_ells}, {hm_recipe}, compute_cNG = {compute_cNG}, compute_SS = {compute_SS} done')
+
+assert 1 > 2, 'stop here'
 
 path_ind = '/Users/davide/Documents/Lavoro/Programmi/SSC_restructured/config/common_data/ind'
 ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like.dat').astype('int') - 1
