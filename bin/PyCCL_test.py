@@ -110,8 +110,8 @@ FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1 + IAFILE[:, 0]) ** (-0.41) * IAFIL
 
 FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Omega_b) / ccl.growth_factor(cosmo, 1 / (
         1 + IAFILE[:, 0]))
-WL = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
-      range(zbins)]
+wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
+       range(zbins)]
 
 # GALAXY KERNELS
 
@@ -125,9 +125,22 @@ wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEucli
                                       mag_bias=None)
        for iz in range(zbins)]
 
-# ztab = np.expand_dims(ztab, axis=0)
-# ztab = np.repeat(ztab, repeats=10, axis=0)
-# WL_obj = ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid.T), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
+
+# get kernels and store them into arrays
+
+# scale factor and comoving distance
+# a_arr = 1 / (1 + ztab[::-1])
+# chi = ccl.background.comoving_radial_distance(cosmo, a_arr[::-1])  # in Mpc
+# wig_array = np.zeros((zbins, len(ztab)))
+# wil_array = np.zeros((zbins, len(ztab)))
+#
+# for zbin in range(zbins):
+#     # wil_values = wil[zbin].get_kernel(chi=chi)
+#     wig_array[zbin, :] = wig[zbin].get_kernel(chi=chi)[0, :]
+#     wil_array[zbin, :] = wil[zbin].get_kernel(chi=chi)[0, :]
+#     plt.plot(ztab, wil_array[zbin, :])
+
+
 
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
@@ -193,7 +206,7 @@ else:
 print(f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS = {compute_SS}\ncompute_cNG = {compute_cNG}')
 
 
-CLL = np.array([[ccl.angular_cl(cosmo, WL[iz], WL[jz], ell, p_of_k_a=Pk)
+CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
                  for iz in range(zbins)]
                 for jz in range(zbins)])
 
@@ -201,6 +214,16 @@ A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
 n_gal = 30 * (180 * 60 / np.pi) ** 2
 sigma_e = 0.3
+
+
+# save wf and cl for validation
+# np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
+# np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
+# np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
+# np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
+# np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+
+
 
 # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
@@ -273,10 +296,10 @@ if compute_SS:
             start = time.perf_counter()
             for k in range(zbins):
                 for l in range(zbins):
-                    cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, WL[i], WL[j], ell, tkka,
+                    cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, wil[i], wil[j], ell, tkka,
                                                                                      sigma2_B=None, fsky=f_sky,
-                                                                                     cltracer3=WL[k],
-                                                                                     cltracer4=WL[l],
+                                                                                     cltracer3=wil[k],
+                                                                                     cltracer4=wil[l],
                                                                                      ell2=None,
                                                                                      integration_method='spline')
 
@@ -293,10 +316,10 @@ if compute_cNG:
             start = time.perf_counter()
             for k in range(zbins):
                 for l in range(zbins):
-                    cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, WL[i], WL[j], ell,
+                    cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, wil[i], wil[j], ell,
                                                                                       tkka, fsky=f_sky,
-                                                                                      cltracer3=WL[k],
-                                                                                      cltracer4=WL[l], ell2=None,
+                                                                                      cltracer3=wil[k],
+                                                                                      cltracer4=wil[l], ell2=None,
                                                                                       integration_method='spline')
             print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
     print(f'connected non-Gaussian computed in {(time.perf_counter() - start_cNG):.2f} seconds')
