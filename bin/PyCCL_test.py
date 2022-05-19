@@ -85,14 +85,15 @@ nzEuclid = 30 * (ztab / 0.9 * np.sqrt(2)) ** 2 * np.exp(-(ztab / 0.9 * np.sqrt(2
 
 fout, cb, zb, sigmab, c0, z0, sigma0 = 0.1, 1, 0, 0.05, 1, 0.1, 0.05
 
-nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout * (erf((ztab - z0 - c0 * zi[0, iz]) /
-                                                                     np.sqrt(2) / (1 + ztab) / sigma0)
-                                                                 - erf(
-            (ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (1 + ztab) / sigma0)) + c0 * (1 - fout) * (
-                                                            erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
-                                                                    1 + ztab) / sigmab) - erf(
-                                                        (ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
-                                                                1 + ztab) / sigmab))) for iz in range(zbins)])
+nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
+                                                    (erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) / (
+                                                            1 + ztab) / sigma0) -
+                                                     erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (
+                                                             1 + ztab) / sigma0)) + c0 * (1 - fout) *
+                                                    (erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
+                                                            1 + ztab) / sigmab) -
+                                                     erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
+                                                             1 + ztab) / sigmab))) for iz in range(zbins)])
 
 # plt.xlabel('$z$')
 # plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
@@ -122,9 +123,7 @@ b_array = np.asarray([bias(z, zi) for z in ztab])
 # time in the call below
 
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
-                                      mag_bias=None)
-       for iz in range(zbins)]
-
+                                      mag_bias=None) for iz in range(zbins)]
 
 # get kernels and store them into arrays
 
@@ -139,7 +138,6 @@ wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEucli
 #     wig_array[zbin, :] = wig[zbin].get_kernel(chi=chi)[0, :]
 #     wil_array[zbin, :] = wil[zbin].get_kernel(chi=chi)[0, :]
 #     plt.plot(ztab, wil_array[zbin, :])
-
 
 
 # Import fiducial P(k,z)
@@ -199,12 +197,11 @@ elif which_ells == 'IST-NL':
     ell = np.exp(ell)
 
 else:
-    raise ValueError('Wrong choice of ell bins: which_ells must be either IST-F or IST-NL, and '
-                     'nbl must be 20.')
+    raise ValueError('Wrong choice of ell bins: which_ells must be either IST-F or IST-NL, and nbl must be 20')
 
 # jsut a check on the settings
-print(f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS = {compute_SS}\ncompute_cNG = {compute_cNG}')
-
+print(
+    f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS = {compute_SS}\ncompute_cNG = {compute_cNG}')
 
 CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
                  for iz in range(zbins)]
@@ -215,7 +212,6 @@ f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
 n_gal = 30 * (180 * 60 / np.pi) ** 2
 sigma_e = 0.3
 
-
 # save wf and cl for validation
 np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
 # np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
@@ -225,7 +221,6 @@ np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
 np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
 
 assert 1 > 2, 'This is just a test'
-
 
 # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
