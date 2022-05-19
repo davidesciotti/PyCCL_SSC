@@ -70,7 +70,8 @@ cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.05, w0=-1., wa=0., h=0.67, sigma8=
 
 # Define redshift distribution of sources kernels
 zmin, zmax = 0.001, 2.5
-ztab = np.arange(zmin, zmax, 0.001)  # ! should it start from 0 instead?
+dz = 0.001
+ztab = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
 zi = np.array([
     [zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
     [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]
@@ -93,6 +94,12 @@ nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout * (erf((ztab - z0 
                                                                     1 + ztab) / sigmab) - erf(
                                                         (ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
                                                                 1 + ztab) / sigmab))) for iz in range(zbins)])
+
+
+# normalize nz
+for i in np.arange(10):
+    norm_factor = np.sum(nziEuclid[i,:])*dz
+    nziEuclid[i,:] /= norm_factor
 
 # plt.xlabel('$z$')
 # plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
