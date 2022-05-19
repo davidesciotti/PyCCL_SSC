@@ -217,12 +217,14 @@ sigma_e = 0.3
 
 
 # save wf and cl for validation
-# np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
+np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
 # np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
 # np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
-# np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
-# np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
+np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
 
+assert 1 > 2, 'This is just a test'
 
 
 # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
