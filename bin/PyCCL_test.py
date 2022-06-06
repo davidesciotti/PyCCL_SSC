@@ -8,13 +8,13 @@ import numpy as np
 import pyccl as ccl
 from scipy.special import erf
 
-sys.path.append(str('/Users/davide/Documents/Lavoro/Programmi/SSC_restructured/lib'))
-import my_module as mm
-
-matplotlib.use('Qt5Agg')
-
 # get project directory
 project_path = Path.cwd().parent
+
+sys.path.append(str(project_path.parent))
+import SSC_restructured_v2.lib.my_module as mm
+
+matplotlib.use('Qt5Agg')
 
 start_time = time.perf_counter()
 
@@ -51,6 +51,30 @@ def bias(z, zi):
 
 def b(i, z_mean):
     return np.sqrt(1 + z_mean[i])
+
+
+def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
+
+    cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
+
+    start_SSC_timer = time.perf_counter()
+    for i in range(zbins):
+        for j in range(zbins):
+            start = time.perf_counter()
+            for k in range(zbins):
+                for l in range(zbins):
+                    cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, kernel_A[i], kernel_B[j],
+                                                                                     ell, tkka,
+                                                                                     sigma2_B=None, fsky=f_sky,
+                                                                                     cltracer3=kernel_C[k],
+                                                                                     cltracer4=kernel_D[l],
+                                                                                     ell2=None,
+                                                                                     integration_method=integration_method)
+
+            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
+    print(f'SSC computed in  {(time.perf_counter() - start_SSC_timer):.2f} seconds')
+
+    return cov_SS_6D
 
 
 ###############################################################################
@@ -122,6 +146,7 @@ b_array = np.asarray([bias(z, zi) for z in ztab])
 # b_array = np.repeat(b_array[:, np.newaxis], zbins, axis=1)  # this is useless, I can just pass the same array each
 # time in the call below
 
+# ! the bias is not used by this function!!!
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
 
@@ -162,7 +187,9 @@ nbl = 30
 
 # ! settings
 which_ells = 'IST-F'
-compute_SS = True
+compute_SS_WL = False
+compute_SS_GC = True
+save_SSC = True
 compute_cNG = False
 hm_recipe = 'KiDS_1000'
 # ! settings
@@ -201,7 +228,8 @@ else:
 
 # jsut a check on the settings
 print(
-    f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS = {compute_SS}\ncompute_cNG = {compute_cNG}')
+    f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS_WL = {compute_SS_WL}'
+    f'\ncompute_SS_GC = {compute_SS_GC} \ncompute_cNG = {compute_cNG}')
 
 CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
                  for iz in range(zbins)]
@@ -220,7 +248,7 @@ np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
 np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
 np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
 
-assert 1 > 2, 'This is just a test'
+
 
 # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
@@ -285,24 +313,16 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
 # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
 
 # ! super-sample
-if compute_SS:
-    cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-    start_SSC = time.perf_counter()
-    for i in range(zbins):
-        for j in range(zbins):
-            start = time.perf_counter()
-            for k in range(zbins):
-                for l in range(zbins):
-                    cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, wil[i], wil[j], ell, tkka,
-                                                                                     sigma2_B=None, fsky=f_sky,
-                                                                                     cltracer3=wil[k],
-                                                                                     cltracer4=wil[l],
-                                                                                     ell2=None,
-                                                                                     integration_method='spline')
+if compute_SS_WL:
+    cov_SS_WL_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
+                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+if compute_SS_GC:
+    cov_SS_GC_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
+                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
 
-            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
-    print(f'SSC computed in  {(time.perf_counter() - start_SSC):.2f} seconds')
-    np.save(f'{project_path}/output/cov_PyCCL_SS_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_SS_6D)
+if save_SSC:
+    np.save(f'{project_path}/output/cov_PyCCL_SS_WL_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_SS_WL_6D)
+    np.save(f'{project_path}/output/cov_PyCCL_SS_GC_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_SS_GC_6D)
 
 if compute_cNG:
     # ! connected non-Gaussian
@@ -321,10 +341,8 @@ if compute_cNG:
             print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
     print(f'connected non-Gaussian computed in {(time.perf_counter() - start_cNG):.2f} seconds')
 
-    np.save(f'{project_path}/output/cov_PyCCL_cNG_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy',
-            cov_cNG_6D)
+    np.save(f'{project_path}/output/cov_PyCCL_cNG_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_cNG_6D)
 
-print(f'{which_ells}, {hm_recipe}, compute_cNG = {compute_cNG}, compute_SS = {compute_SS} done')
 
 assert 1 > 2, 'stop here'
 
