@@ -193,11 +193,11 @@ ell_max = 5000
 nbl = 30
 
 # ! settings
-which_ells = 'ISTNL'
+which_ells = 'ISTF'
 compute_SS_WL = False
 compute_SS_GC = True
-save_SSC = True
 compute_cNG = False
+save_SSC = True
 hm_recipe = 'KiDS_1000'
 # ! settings
 
@@ -211,8 +211,6 @@ else:
     raise ValueError('which_ells should be ISTF or ISTNL')
 
 ell, _ = ell_funct(ell_min, ell_max, nbl)
-
-
 
 # jsut a check on the settings
 print(
@@ -313,7 +311,7 @@ if save_SSC:
             cov_SS_GC_6D)
 
 if compute_cNG:
-    # ! connected non-Gaussian
+
     cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
     start_cNG = time.perf_counter()
     for i in range(zbins):
