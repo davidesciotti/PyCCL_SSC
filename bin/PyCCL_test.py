@@ -194,8 +194,7 @@ nbl = 30
 
 # ! settings
 which_ells = 'ISTF'
-compute_SS_WL = False
-compute_SS_GC = True
+probe = 'GC'
 compute_cNG = False
 save_SSC = True
 hm_recipe = 'KiDS_1000'
@@ -208,14 +207,21 @@ elif which_ells == 'ISTNL':
     nbl = 20
     ell_funct = ell_utils.ISTNL_ells
 else:
-    raise ValueError('which_ells should be ISTF or ISTNL')
+    raise ValueError('which_ells must be "ISTF" or "ISTNL"')
+
+if probe == 'WL':
+    ell_max = 5000
+elif probe == 'GC':
+    ell_max = 3000
+else:
+    raise ValueError('probe must be "WL" or "GC"')
 
 ell, _ = ell_funct(ell_min, ell_max, nbl)
 
 # jsut a check on the settings
 print(
-    f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\ncompute_SS_WL = {compute_SS_WL}'
-    f'\ncompute_SS_GC = {compute_SS_GC} \ncompute_cNG = {compute_cNG}')
+    f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
+    f'\ncompute_cNG = {compute_cNG}')
 
 CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
                  for iz in range(zbins)]
@@ -297,20 +303,21 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
 # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
 
 # ! super-sample
-if compute_SS_WL:
-    cov_SS_WL_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
-                                     ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-if compute_SS_GC:
-    cov_SS_GC_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
-                                     ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
+if probe == 'WL':
+    cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
+                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+elif probe == 'GC':
+    cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
+                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
 
 if save_SSC:
-    np.save(f'{project_path}/output/cov_PyCCL_SS_WL_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy',
-            cov_SS_WL_6D)
-    np.save(f'{project_path}/output/cov_PyCCL_SS_GC_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy',
-            cov_SS_GC_6D)
+    np.save(
+        f'{project_path}/output/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
+        cov_SS_6D)
 
 if compute_cNG:
+
+    assert probe == 'WL', 'GC still to be implemented for cNG'
 
     cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
     start_cNG = time.perf_counter()
