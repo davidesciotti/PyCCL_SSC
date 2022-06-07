@@ -13,6 +13,7 @@ project_path = Path.cwd().parent
 
 sys.path.append(str(project_path.parent))
 import SSC_restructured_v2.lib.my_module as mm
+import SSC_restructured_v2.bin.ell_values_running as ell_utils
 
 matplotlib.use('Qt5Agg')
 
@@ -54,7 +55,6 @@ def b(i, z_mean):
 
 
 def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-
     cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
 
     start_SSC_timer = time.perf_counter()
@@ -93,8 +93,10 @@ cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.05, w0=-1., wa=0., h=0.67, sigma8=
                       Omega_k=1 - (0.27 + 0.05) - 0.68)
 
 # Define redshift distribution of sources kernels
-zmin, zmax = 0.001, 2.5
-ztab = np.arange(zmin, zmax, 0.001)  # ! should it start from 0 instead?
+zmin, zmax, dz = 0.001, 2.5, 0.001
+ztab = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
+
+# these are the bin edges
 zi = np.array([
     [zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
     [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]
@@ -110,14 +112,19 @@ nzEuclid = 30 * (ztab / 0.9 * np.sqrt(2)) ** 2 * np.exp(-(ztab / 0.9 * np.sqrt(2
 fout, cb, zb, sigmab, c0, z0, sigma0 = 0.1, 1, 0, 0.05, 1, 0.1, 0.05
 
 nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
-                                                    (erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) / (
-                                                            1 + ztab) / sigma0) -
-                                                     erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) / (
-                                                             1 + ztab) / sigma0)) + c0 * (1 - fout) *
-                                                    (erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) / (
-                                                            1 + ztab) / sigmab) -
-                                                     erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) / (
-                                                             1 + ztab) / sigmab))) for iz in range(zbins)])
+                                                    (erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) /
+                                                         (1 + ztab) / sigma0) -
+                                                     erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) /
+                                                         (1 + ztab) / sigma0)) +
+                                                    c0 * (1 - fout) *
+                                                    (erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) /
+                                                         (1 + ztab) / sigmab) -
+                                                     erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) /
+                                                         (1 + ztab) / sigmab))) for iz in range(zbins)])
+# normalize nz
+for i in range(10):
+    norm_factor = np.sum(nziEuclid[i, :]) * dz
+    nziEuclid[i, :] /= norm_factor
 
 # plt.xlabel('$z$')
 # plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
@@ -182,11 +189,11 @@ Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
 # choose the ell binning
 ell_min = 10
-ell_max_WL = 5000
+ell_max = 5000
 nbl = 30
 
 # ! settings
-which_ells = 'IST-F'
+which_ells = 'ISTNL'
 compute_SS_WL = False
 compute_SS_GC = True
 save_SSC = True
@@ -194,37 +201,18 @@ compute_cNG = False
 hm_recipe = 'KiDS_1000'
 # ! settings
 
-if which_ells == 'IST-F':
+if which_ells == 'ISTF':
     nbl = 30
-elif which_ells == 'IST-NL':
+    ell_funct = ell_utils.ISTF_ells
+elif which_ells == 'ISTNL':
     nbl = 20
+    ell_funct = ell_utils.ISTNL_ells
 else:
-    raise ValueError('which_ells should be IST-F or IST-NL')
+    raise ValueError('which_ells should be ISTF or ISTNL')
 
-# TODO why should nbl be equal to 20? was I drunk?
-# if which_ells == 'IST-F' and nbl == 20:
-if which_ells == 'IST-F':
-    # IST:F recipe:
-    ell_WL = np.logspace(np.log10(ell_min), np.log10(ell_max_WL), nbl + 1)  # WL
-    # central values of each bin
-    l_centr_WL = (ell_WL[1:] + ell_WL[:-1]) / 2
-    # take the log10 of the values
-    logarithm_WL = np.log10(l_centr_WL)
-    # update the ell_WL, ell_GC arrays with the right values
-    ell_WL = logarithm_WL
-    # ell values in linear scale:
-    l_lin_WL = 10 ** ell_WL
-    ell = l_lin_WL
+ell, _ = ell_funct(ell_min, ell_max, nbl)
 
-# elif which_ells == 'IST-NL' and nbl == 20:
-elif which_ells == 'IST-NL':
-    # this is slightly different
-    ell_bins = np.linspace(np.log(ell_min), np.log(ell_max_WL), nbl + 1)
-    ell = (ell_bins[:-1] + ell_bins[1:]) / 2.
-    ell = np.exp(ell)
 
-else:
-    raise ValueError('Wrong choice of ell bins: which_ells must be either IST-F or IST-NL, and nbl must be 20')
 
 # jsut a check on the settings
 print(
@@ -247,8 +235,6 @@ np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
 np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
 np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
 np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
-
-
 
 # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
@@ -315,14 +301,16 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
 # ! super-sample
 if compute_SS_WL:
     cov_SS_WL_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
-                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+                                     ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
 if compute_SS_GC:
     cov_SS_GC_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
-                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
+                                     ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
 
 if save_SSC:
-    np.save(f'{project_path}/output/cov_PyCCL_SS_WL_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_SS_WL_6D)
-    np.save(f'{project_path}/output/cov_PyCCL_SS_GC_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_SS_GC_6D)
+    np.save(f'{project_path}/output/cov_PyCCL_SS_WL_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy',
+            cov_SS_WL_6D)
+    np.save(f'{project_path}/output/cov_PyCCL_SS_GC_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy',
+            cov_SS_GC_6D)
 
 if compute_cNG:
     # ! connected non-Gaussian
@@ -342,7 +330,6 @@ if compute_cNG:
     print(f'connected non-Gaussian computed in {(time.perf_counter() - start_cNG):.2f} seconds')
 
     np.save(f'{project_path}/output/cov_PyCCL_cNG_nbl{nbl}_ells{which_ells}_hm_recipe{hm_recipe}_6D.npy', cov_cNG_6D)
-
 
 assert 1 > 2, 'stop here'
 
