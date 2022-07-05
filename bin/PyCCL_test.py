@@ -55,7 +55,6 @@ def b(i, z_mean):
 
 
 def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-
     cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
     start_SSC_timer = time.perf_counter()
 
@@ -71,14 +70,13 @@ def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
                                                                                      cltracer4=kernel_D[l],
                                                                                      ell2=None,
                                                                                      integration_method=integration_method)
-            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
-    print(f'SSC computed in  {(time.perf_counter() - start_SSC_timer):.2f} seconds')
+            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} s')
+    print(f'SSC computed in  {(time.perf_counter() - start_SSC_timer):.2f} s')
 
     return cov_SS_6D
 
 
 def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-
     cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
     start_cNG_timer = time.perf_counter()
 
@@ -93,11 +91,10 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
                                                                                       cltracer4=kernel_D[l],
                                                                                       ell2=None,
                                                                                       integration_method=integration_method)
-            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} seconds')
-    print(f'cNG computed in {(time.perf_counter() - start_cNG_timer):.2f} seconds')
+            print(f'i, j redshift bins: {i}, {j}, computed in  {(time.perf_counter() - start):.2f} s')
+    print(f'cNG computed in {(time.perf_counter() - start_cNG_timer):.2f} s')
 
     return cov_cNG_6D
-
 
 
 ###############################################################################
@@ -144,7 +141,8 @@ nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
                                                          (1 + ztab) / sigmab) -
                                                      erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) /
                                                          (1 + ztab) / sigmab))) for iz in range(zbins)])
-# normalize nz
+
+# normalize nz: this should be the denominator of Eq. (112) of IST:f
 for i in range(10):
     norm_factor = np.sum(nziEuclid[i, :]) * dz
     nziEuclid[i, :] /= norm_factor
@@ -180,20 +178,29 @@ b_array = np.asarray([bias(z, zi) for z in ztab])
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
 
-# get kernels and store them into arrays
+z_marco = np.linspace(0.001, 4, 500)
+path_marco = '/Users/davide/Downloads/WF_marco_5lug'
 
+wil_marco = np.load(f'{path_marco}/WL_WeightFunction.npy')
+
+# get kernels and store them into arrays to compare with Marco's
 # scale factor and comoving distance
-# a_arr = 1 / (1 + ztab[::-1])
-# chi = ccl.background.comoving_radial_distance(cosmo, a_arr[::-1])  # in Mpc
-# wig_array = np.zeros((zbins, len(ztab)))
-# wil_array = np.zeros((zbins, len(ztab)))
-#
-# for zbin in range(zbins):
-#     # wil_values = wil[zbin].get_kernel(chi=chi)
-#     wig_array[zbin, :] = wig[zbin].get_kernel(chi=chi)[0, :]
-#     wil_array[zbin, :] = wil[zbin].get_kernel(chi=chi)[0, :]
-#     plt.plot(ztab, wil_array[zbin, :])
+a_arr = 1 / (1 + ztab[::-1])
+chi = ccl.background.comoving_radial_distance(cosmo, a_arr[::-1])  # in Mpc
+wig_array = np.zeros((zbins, len(ztab)))
+wil_array = np.zeros((zbins, len(ztab)))
 
+for zbin in range(zbins):
+    wig_array[zbin, :] = wig[zbin].get_kernel(chi=chi)[0, :]
+    wil_array[zbin, :] = wil[zbin].get_kernel(chi=chi)[0, :]
+
+    plt.plot(ztab, wil_array[zbin, :])
+    plt.plot(z_marco, wil_marco[zbin, :])
+
+np.save(project_path / 'output/wf_and_cl_validation/wil_array.npy', wil_array)
+np.save(project_path / 'output/wf_and_cl_validation/wig_array.npy', wig_array)
+
+assert 1 > 2
 
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
@@ -217,150 +224,149 @@ nbl = 30
 
 # ! settings
 which_ells = 'ISTF'
-probe = 'GC'
+probe = 'WL'
 compute_cNG = True
 save_covs = True
-hm_recipe = 'KiDS_1000'
+hm_recipe = 'KiDS1000'
 # ! settings
 
-for which_ells in ['ISTF', 'ISTNL']:
-    for hm_recipe in ['KiDS_1000', 'Krause_2017']:
-        for probe in ['WL', 'GC']:
+# for which_ells in ['ISTF', 'ISTNL']:
+for hm_recipe in ['KiDS1000', 'Krause2017']:
+    # for probe in ['WL', 'GC']:
 
-            if which_ells == 'ISTF':
-                nbl = 30
-                ell_funct = ell_utils.ISTF_ells
-            elif which_ells == 'ISTNL':
-                nbl = 20
-                ell_funct = ell_utils.ISTNL_ells
-            else:
-                raise ValueError('which_ells must be "ISTF" or "ISTNL"')
+    if which_ells == 'ISTF':
+        nbl = 30
+        ell_funct = ell_utils.ISTF_ells
+    elif which_ells == 'ISTNL':
+        nbl = 20
+        ell_funct = ell_utils.ISTNL_ells
+    else:
+        raise ValueError('which_ells must be "ISTF" or "ISTNL"')
 
-            if probe == 'WL':
-                ell_max = 5000
-            elif probe == 'GC':
-                ell_max = 3000
-            else:
-                raise ValueError('probe must be "WL" or "GC"')
+    if probe == 'WL':
+        ell_max = 5000
+    elif probe == 'GC':
+        ell_max = 3000
+    else:
+        raise ValueError('probe must be "WL" or "GC"')
 
-            ell_config = {
-                'ell_min': ell_min,
-                'ell_max': ell_max,
-                'nbl': nbl
-            }
-            ell, _ = ell_funct(ell_config)
+    ell_config = {
+        'ell_min': ell_min,
+        'ell_max': ell_max,
+        'nbl': nbl
+    }
+    ell, _ = ell_funct(ell_config)
 
-            # jsut a check on the settings
-            print(
-                f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
-                f'\ncompute_cNG = {compute_cNG}')
+    # just a check on the settings
+    print(
+        f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
+        f'\ncompute_cNG = {compute_cNG}')
 
-            # CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
-            #                  for iz in range(zbins)]
-            #                 for jz in range(zbins)])
+    # CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
+    #                  for iz in range(zbins)]
+    #                 for jz in range(zbins)])
 
-            A_deg = 15e3
-            f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
-            n_gal = 30 * (180 * 60 / np.pi) ** 2
-            sigma_e = 0.3
+    A_deg = 15e3
+    f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
+    n_gal = 30 * (180 * 60 / np.pi) ** 2
+    sigma_e = 0.3
 
-            # save wf and cl for validation
-            # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
-            # np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
-            # np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
-            # np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
-            # np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
-            # np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
+    # save wf and cl for validation
+    # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
+    # np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
+    # np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
+    # np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
+    # np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+    # np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
 
-            # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
-            # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
+    # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
+    # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
 
-            # TODO we're not sure about the values of Delta and rho_type
-            # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
+    # TODO we're not sure about the values of Delta and rho_type
+    # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
 
-            # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
+    # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
 
-            # ! HALO MODEL PRESCRIPTIONS:
-            # KiDS_1000 Methodology:
-            # https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
+    # ! HALO MODEL PRESCRIPTIONS:
+    # KiDS1000 Methodology:
+    # https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
 
-            # Krause_2017: https://arxiv.org/pdf/1601.05779.pdf
-            # about the mass definition, the paper says:
-            # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
+    # Krause2017: https://arxiv.org/pdf/1601.05779.pdf
+    # about the mass definition, the paper says:
+    # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
 
-            # mass definition
-            if hm_recipe == 'KiDS_1000':
-                c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
-                mass_def = ccl.halos.MassDef200m(c_m=c_m)
-                c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
-            elif hm_recipe == 'Krause_2017':
-                c_m = 'Bhattacharya13'  # see paper, after Eq. 1
-                mass_def = ccl.halos.MassDef200m(c_m=c_m)
-                c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
-            else:
-                raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS_1000" or "Krause_2017".')
+    # mass definition
+    if hm_recipe == 'KiDS1000':
+        c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
+        mass_def = ccl.halos.MassDef200m(c_m=c_m)
+        c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
+    elif hm_recipe == 'Krause2017':
+        c_m = 'Bhattacharya13'  # see paper, after Eq. 1
+        mass_def = ccl.halos.MassDef200m(c_m=c_m)
+        c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
+    else:
+        raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
 
-            # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
+    # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
 
-            # mass function
-            massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+    # mass function
+    massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
 
-            # halo bias
-            hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+    # halo bias
+    hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
 
-            # concentration-mass relation
+    # concentration-mass relation
 
-            # TODO understand better this object. We're calling the abstract class, is this ok?
-            # HMCalculator
-            hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
-                                                    log10M_min=8.0, log10M_max=16.0, nlog10M=128,
-                                                    integration_method_M='simpson', k_min=1e-05)
+    # TODO understand better this object. We're calling the abstract class, is this ok?
+    # HMCalculator
+    hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
+                                            log10M_min=8.0, log10M_max=16.0, nlog10M=128,
+                                            integration_method_M='simpson', k_min=1e-05)
 
-            # halo profile
-            halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
-                                                             fourier_analytic=True, projected_analytic=False,
-                                                             cumul2d_analytic=False, truncated=True)
+    # halo profile
+    halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
+                                                     fourier_analytic=True, projected_analytic=False,
+                                                     cumul2d_analytic=False, truncated=True)
 
-            # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum (see documentation:
-            # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
-            # 🐛 bug solved: normprof shoud be True
-            # 🐛 bug solved?: p_of_k_a=None instead of Pk
-            tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
-                                                         prof1=halo_profile, prof2=None, prof12_2pt=None,
-                                                         prof3=None, prof4=None, prof34_2pt=None,
-                                                         normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                                         p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
-                                                         extrap_order_hik=1, use_log=False)
+    # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum (see documentation:
+    # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
+    # 🐛 bug solved: normprof shoud be True
+    # 🐛 bug solved?: p_of_k_a=None instead of Pk
+    tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
+                                                 prof1=halo_profile, prof2=None, prof12_2pt=None,
+                                                 prof3=None, prof4=None, prof34_2pt=None,
+                                                 normprof1=True, normprof2=True, normprof3=True, normprof4=True,
+                                                 p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
+                                                 extrap_order_hik=1, use_log=False)
 
-            # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
+    # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
 
-            # ! super-sample
-            if probe == 'WL':
-                cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
-                                              ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-            elif probe == 'GC':
-                cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
-                                              ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
+    # ! super-sample
+    if probe == 'WL':
+        cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
+                                      ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+    elif probe == 'GC':
+        cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
+                                      ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
 
-            if save_covs:
-                np.save(
-                    f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
-                    cov_SS_6D)
+    if save_covs:
+        np.save(
+            f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
+            cov_SS_6D)
 
-            # ! cNG
-            if compute_cNG:
+    # ! cNG
+    if compute_cNG:
 
-                if probe == 'WL':
-                    cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
-                                                   ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-                elif probe == 'GC':
-                    cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
-                                                   ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-                if save_covs:
-                    np.save(
-                        f'{project_path}/output/covmat/cov_PyCCL_cNG_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
-                        cov_cNG_6D)
-
+        if probe == 'WL':
+            cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
+                                           ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+        elif probe == 'GC':
+            cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
+                                           ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+        if save_covs:
+            np.save(
+                f'{project_path}/output/covmat/cov_PyCCL_cNG_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
+                cov_cNG_6D)
 
 assert 1 > 2, 'stop here'
 
