@@ -9,11 +9,15 @@ import pyccl as ccl
 from scipy.special import erf
 
 # get project directory
+from statsmodels.tsa.base import prediction
+
 project_path = Path.cwd().parent
 
-sys.path.append(str(project_path.parent))
-import SSC_restructured_v2.lib.my_module as mm
-import SSC_restructured_v2.bin.ell_values_running as ell_utils
+sys.path.append(f'{project_path}/lib')
+import my_module as mm
+
+sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
+import ell_values_running as ell_utils
 
 matplotlib.use('Qt5Agg')
 
@@ -153,7 +157,6 @@ for i in range(10):
 # plt.show()
 
 # Import look-up tables for IAs
-
 IAFILE = np.genfromtxt(project_path / 'input/scaledmeanlum-E2Sa.dat')
 FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1 + IAFILE[:, 0]) ** (-0.41) * IAFILE[:, 1] ** 2.17
 
@@ -163,8 +166,6 @@ FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1 + IAFILE[:, 0]) ** (-0.41) * IAFIL
 
 FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Omega_b) / ccl.growth_factor(cosmo, 1 / (
         1 + IAFILE[:, 0]))
-wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
-       range(zbins)]
 
 # GALAXY KERNELS
 
@@ -174,33 +175,10 @@ b_array = np.asarray([bias(z, zi) for z in ztab])
 # b_array = np.repeat(b_array[:, np.newaxis], zbins, axis=1)  # this is useless, I can just pass the same array each
 # time in the call below
 
-# ! the bias is not used by this function!!!
+wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
+       range(zbins)]
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
-
-z_marco = np.linspace(0.001, 4, 500)
-path_marco = '/Users/davide/Downloads/WF_marco_5lug'
-
-wil_marco = np.load(f'{path_marco}/WL_WeightFunction.npy')
-
-# get kernels and store them into arrays to compare with Marco's
-# scale factor and comoving distance
-a_arr = 1 / (1 + ztab[::-1])
-chi = ccl.background.comoving_radial_distance(cosmo, a_arr[::-1])  # in Mpc
-wig_array = np.zeros((zbins, len(ztab)))
-wil_array = np.zeros((zbins, len(ztab)))
-
-for zbin in range(zbins):
-    wig_array[zbin, :] = wig[zbin].get_kernel(chi=chi)[0, :]
-    wil_array[zbin, :] = wil[zbin].get_kernel(chi=chi)[0, :]
-
-    plt.plot(ztab, wil_array[zbin, :])
-    plt.plot(z_marco, wil_marco[zbin, :])
-
-np.save(project_path / 'output/wf_and_cl_validation/wil_array.npy', wil_array)
-np.save(project_path / 'output/wf_and_cl_validation/wig_array.npy', wig_array)
-
-assert 1 > 2
 
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
@@ -223,150 +201,165 @@ ell_max = 5000
 nbl = 30
 
 # ! settings
-which_ells = 'ISTF'
-probe = 'WL'
-compute_cNG = True
+ell_recipe = 'ISTF'
+probe = '3x2pt'
+compute_cNG = False
 save_covs = True
 hm_recipe = 'KiDS1000'
 # ! settings
 
 # for which_ells in ['ISTF', 'ISTNL']:
-for hm_recipe in ['KiDS1000', 'Krause2017']:
-    # for probe in ['WL', 'GC']:
+# for hm_recipe in ['KiDS1000', 'Krause2017']:
+# for probe in ['WL', 'GC']:
 
-    if which_ells == 'ISTF':
-        nbl = 30
-        ell_funct = ell_utils.ISTF_ells
-    elif which_ells == 'ISTNL':
-        nbl = 20
-        ell_funct = ell_utils.ISTNL_ells
-    else:
-        raise ValueError('which_ells must be "ISTF" or "ISTNL"')
+if ell_recipe == 'ISTF':
+    nbl = 30
+elif ell_recipe == 'ISTNL':
+    nbl = 20
+else:
+    raise ValueError('ell_recipe must be "ISTF" or "ISTNL"')
+
+if probe == 'WL':
+    ell_max = 5000
+elif probe == 'GC' or '3x2pt':
+    ell_max = 3000
+else:
+    raise ValueError('probe must be "WL", "GC" or "3x2pt"')
+
+# 3x2pt stuff
+probe_wf_dict = {
+    'L': wil,
+    'G': wig
+}
+
+probe_combinations_3x2pt = [['L', 'L', 'L', 'L'],
+                            ['L', 'L', 'G', 'L'],
+                            ['L', 'L', 'G', 'G'],
+                            ['G', 'L', 'G', 'L'],
+                            ['G', 'L', 'G', 'G'],
+                            ['G', 'G', 'G', 'G']]
+
+ell, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_recipe)
+
+# just a check on the settings
+print(
+    f'settings:\nwhich_ells = {ell_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
+    f'\ncompute_cNG = {compute_cNG}')
+
+# CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
+#                  for iz in range(zbins)]
+#                 for jz in range(zbins)])
+
+A_deg = 15e3
+f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
+n_gal = 30 * (180 * 60 / np.pi) ** 2
+sigma_e = 0.3
+
+# save wf and cl for validation
+# np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
+# np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
+# np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
+# np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
+# np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+# np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
+
+# notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
+# Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
+
+# TODO we're not sure about the values of Delta and rho_type
+# mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
+
+# from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
+
+# ! HALO MODEL PRESCRIPTIONS:
+# KiDS1000 Methodology:
+# https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
+
+# Krause2017: https://arxiv.org/pdf/1601.05779.pdf
+# about the mass definition, the paper says:
+# "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
+
+# mass definition
+if hm_recipe == 'KiDS1000':  # arXiv:2007.01844
+    c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
+    mass_def = ccl.halos.MassDef200m(c_m=c_m)
+    c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
+elif hm_recipe == 'Krause2017':  # arXiv:1601.05779
+    c_m = 'Bhattacharya13'  # see paper, after Eq. 1
+    mass_def = ccl.halos.MassDef200m(c_m=c_m)
+    c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
+else:
+    raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
+
+# TODO pass mass_def object? plus, understand what exactly is mass_def_strict
+
+# mass function
+massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+
+# halo bias
+hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+
+# concentration-mass relation
+
+# TODO understand better this object. We're calling the abstract class, is this ok?
+# HMCalculator
+hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
+                                        log10M_min=8.0, log10M_max=16.0, nlog10M=128,
+                                        integration_method_M='simpson', k_min=1e-05)
+
+# halo profile
+halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
+                                                 fourier_analytic=True, projected_analytic=False,
+                                                 cumul2d_analytic=False, truncated=True)
+
+# it was p_of_k_a=Pk, but it should use the LINEAR power spectrum (see documentation:
+# https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
+# 🐛 bug solved: normprof shoud be True
+# 🐛 bug solved?: p_of_k_a=None instead of Pk
+tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
+                                             prof1=halo_profile, prof2=None, prof12_2pt=None,
+                                             prof3=None, prof4=None, prof34_2pt=None,
+                                             normprof1=True, normprof2=True, normprof3=True, normprof4=True,
+                                             p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
+                                             extrap_order_hik=1, use_log=False)
+
+# ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
+
+# ! super-sample
+if probe == 'WL':
+    cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
+                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
+elif probe == 'GC':
+    cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
+                                  ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
+
+elif probe == '3x2pt':
+    cov_SS_3x2pt_dict_6D = {}
+    for A, B, C, D in probe_combinations_3x2pt:
+        cov_SS_3x2pt_dict_6D[A, B, C, D] = \
+            compute_SSC_PyCCL(cosmo, kernel_A=probe_wf_dict[A], kernel_B=probe_wf_dict[B],
+                              kernel_C=probe_wf_dict[C], kernel_D=probe_wf_dict[D],
+                              ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
+
+if save_covs:
+    if probe == '3x2pt':
+    np.save(
+        f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
+        cov_SS_6D)
+
+# ! cNG
+if compute_cNG:
 
     if probe == 'WL':
-        ell_max = 5000
+        cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
+                                       ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
     elif probe == 'GC':
-        ell_max = 3000
-    else:
-        raise ValueError('probe must be "WL" or "GC"')
-
-    ell_config = {
-        'ell_min': ell_min,
-        'ell_max': ell_max,
-        'nbl': nbl
-    }
-    ell, _ = ell_funct(ell_config)
-
-    # just a check on the settings
-    print(
-        f'settings:\nwhich_ells = {which_ells}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
-        f'\ncompute_cNG = {compute_cNG}')
-
-    # CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
-    #                  for iz in range(zbins)]
-    #                 for jz in range(zbins)])
-
-    A_deg = 15e3
-    f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
-    n_gal = 30 * (180 * 60 / np.pi) ** 2
-    sigma_e = 0.3
-
-    # save wf and cl for validation
-    # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
-    # np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
-    # np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
-    # np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
-    # np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
-    # np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
-
-    # notebook per mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
-    # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
-
-    # TODO we're not sure about the values of Delta and rho_type
-    # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
-
-    # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
-
-    # ! HALO MODEL PRESCRIPTIONS:
-    # KiDS1000 Methodology:
-    # https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
-
-    # Krause2017: https://arxiv.org/pdf/1601.05779.pdf
-    # about the mass definition, the paper says:
-    # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
-
-    # mass definition
-    if hm_recipe == 'KiDS1000':
-        c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
-        mass_def = ccl.halos.MassDef200m(c_m=c_m)
-        c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
-    elif hm_recipe == 'Krause2017':
-        c_m = 'Bhattacharya13'  # see paper, after Eq. 1
-        mass_def = ccl.halos.MassDef200m(c_m=c_m)
-        c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
-    else:
-        raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
-
-    # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
-
-    # mass function
-    massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
-
-    # halo bias
-    hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
-
-    # concentration-mass relation
-
-    # TODO understand better this object. We're calling the abstract class, is this ok?
-    # HMCalculator
-    hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
-                                            log10M_min=8.0, log10M_max=16.0, nlog10M=128,
-                                            integration_method_M='simpson', k_min=1e-05)
-
-    # halo profile
-    halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
-                                                     fourier_analytic=True, projected_analytic=False,
-                                                     cumul2d_analytic=False, truncated=True)
-
-    # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum (see documentation:
-    # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
-    # 🐛 bug solved: normprof shoud be True
-    # 🐛 bug solved?: p_of_k_a=None instead of Pk
-    tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
-                                                 prof1=halo_profile, prof2=None, prof12_2pt=None,
-                                                 prof3=None, prof4=None, prof34_2pt=None,
-                                                 normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                                 p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
-                                                 extrap_order_hik=1, use_log=False)
-
-    # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
-
-    # ! super-sample
-    if probe == 'WL':
-        cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
-                                      ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-    elif probe == 'GC':
-        cov_SS_6D = compute_SSC_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
-                                      ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
-
+        cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
+                                       ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
     if save_covs:
         np.save(
-            f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
-            cov_SS_6D)
-
-    # ! cNG
-    if compute_cNG:
-
-        if probe == 'WL':
-            cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wil, kernel_B=wil, kernel_C=wil, kernel_D=wil,
-                                           ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-        elif probe == 'GC':
-            cov_cNG_6D = compute_cNG_PyCCL(cosmo, kernel_A=wig, kernel_B=wig, kernel_C=wig, kernel_D=wig,
-                                           ell=ell, tkka=tkka, f_sky=f_sky, integration_method='spline')
-        if save_covs:
-            np.save(
-                f'{project_path}/output/covmat/cov_PyCCL_cNG_{probe}_nbl{nbl}_ells{which_ells}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
-                cov_cNG_6D)
+            f'{project_path}/output/covmat/cov_PyCCL_cNG_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
+            cov_cNG_6D)
 
 assert 1 > 2, 'stop here'
 
@@ -387,7 +380,7 @@ cov_Robin_4D = mm.cov_2D_to_4D(cov_Robin_2D, nbl=nbl, npairs=npairs_auto, block_
 cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl=nbl, zbins=10, probe='LL', ind=ind_LL)
 
 # save PyCCL 2D
-np.save(f'{project_path}/output/cov_PyCCL_nbl{nbl}_ells{which_ells}_2D.npy', cov_SS_2D)
+np.save(f'{project_path}/output/cov_PyCCL_nbl{nbl}_ells{ell_recipe}_2D.npy', cov_SS_2D)
 
 assert 1 > 2
 
