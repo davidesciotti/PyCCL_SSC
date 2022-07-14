@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyccl as ccl
 from scipy.special import erf
+import scipy.io as sio
+
 
 # get project directory
 from statsmodels.tsa.base import prediction
@@ -343,9 +345,13 @@ elif probe == '3x2pt':
 
 if save_covs:
     if probe == '3x2pt':
-    np.save(
-        f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
-        cov_SS_6D)
+        sio.savemat(
+            f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.mat',
+            cov_SS_3x2pt_dict_6D)
+    else:
+        np.save(
+            f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
+            cov_SS_6D)
 
 # ! cNG
 if compute_cNG:
