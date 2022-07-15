@@ -111,6 +111,8 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
 # 2. halo model recipe
 # 3. ordering of the resulting covariance matrix
 
+# * fanstastic collection of notebooks: https://github.com/LSSTDESC/CCLX
+
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -203,7 +205,7 @@ nbl = 30
 
 # ! settings
 ell_recipe = 'ISTF'
-probe = '3x2pt'
+probe = 'WL'
 compute_cNG = False
 save_covs = True
 hm_recipe = 'Krause2017'

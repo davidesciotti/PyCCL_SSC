@@ -40,7 +40,7 @@ cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.045, h=0.67, sigma8=0.83, n_s=0.96
 z = np.linspace(0., 3., 200)
 i_lim = 26.  # Limiting i-band magnitude
 z0 = 0.0417 * i_lim - 0.744
-«
+
 Ngal = 46. * 100.31 * (i_lim - 25.)  # Normalisation, galaxies/arcmin^2
 pz = 1. / (2. * z0) * (z / z0) ** 2. * np.exp(-z / z0)  # Redshift distribution, p(z)
 dNdz = Ngal * pz  # Number density distribution
