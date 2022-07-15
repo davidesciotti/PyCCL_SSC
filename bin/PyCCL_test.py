@@ -9,7 +9,6 @@ import pyccl as ccl
 from scipy.special import erf
 import scipy.io as sio
 
-
 # get project directory
 from statsmodels.tsa.base import prediction
 
@@ -207,12 +206,18 @@ ell_recipe = 'ISTF'
 probe = '3x2pt'
 compute_cNG = False
 save_covs = True
-hm_recipe = 'KiDS1000'
+hm_recipe = 'Krause2017'
+GL_or_LG = 'GL'
 # ! settings
 
 # for which_ells in ['ISTF', 'ISTNL']:
 # for hm_recipe in ['KiDS1000', 'Krause2017']:
 # for probe in ['WL', 'GC']:
+
+path_ind = '/Users/davide/Documents/Lavoro/Programmi/common_data/ind_files'
+ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like_int.dat', dtype=int)
+ind_LL = ind[:npairs_auto, :]
+
 
 if ell_recipe == 'ISTF':
     nbl = 30
@@ -234,12 +239,15 @@ probe_wf_dict = {
     'G': wig
 }
 
-probe_combinations_3x2pt = [['L', 'L', 'L', 'L'],
-                            ['L', 'L', 'G', 'L'],
-                            ['L', 'L', 'G', 'G'],
-                            ['G', 'L', 'G', 'L'],
-                            ['G', 'L', 'G', 'G'],
-                            ['G', 'G', 'G', 'G']]
+probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
+probe_idx_dict = {'L': 0, 'G': 1}
+# upper diagonal of blocks of the covariance matrix
+probe_combinations_3x2pt = ((probe_ordering[0][0], probe_ordering[0][1], probe_ordering[0][0], probe_ordering[0][1]),
+                            (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[1][0], probe_ordering[1][1]),
+                            (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[2][0], probe_ordering[2][1]),
+                            (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[1][0], probe_ordering[1][1]),
+                            (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[2][0], probe_ordering[2][1]),
+                            (probe_ordering[2][0], probe_ordering[2][1], probe_ordering[2][0], probe_ordering[2][1]))
 
 ell, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_recipe)
 
@@ -336,18 +344,37 @@ elif probe == 'GC':
                                   ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
 
 elif probe == '3x2pt':
-    cov_SS_3x2pt_dict_6D = {}
+    cov_SS_3x2pt_dict_10D = {}
     for A, B, C, D in probe_combinations_3x2pt:
-        cov_SS_3x2pt_dict_6D[A, B, C, D] = \
+        cov_SS_3x2pt_dict_10D[A, B, C, D] = \
             compute_SSC_PyCCL(cosmo, kernel_A=probe_wf_dict[A], kernel_B=probe_wf_dict[B],
                               kernel_C=probe_wf_dict[C], kernel_D=probe_wf_dict[D],
                               ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
 
+    # TODO test this by loading the cov_SS_3x2pt_arr_10D from file (and then storing it into a dictionary)
+
+    # symmetrize the matrix:
+    LL = probe_ordering[0][0], probe_ordering[0][1]
+    GL = probe_ordering[1][0], probe_ordering[1][1]  # ! what if I use LG? check (it should be fine...)
+    GG = probe_ordering[2][0], probe_ordering[2][1]
+    cov_SS_3x2pt_dict_10D[GL, LL, ...] = cov_SS_3x2pt_dict_10D[LL, GL, ...]
+    cov_SS_3x2pt_dict_10D[GG, LL, ...] = cov_SS_3x2pt_dict_10D[LL, GG, ...]
+    cov_SS_3x2pt_dict_10D[GG, GL, ...] = cov_SS_3x2pt_dict_10D[GL, GG, ...]
+
+    # stack everything and reshape to 4D
+    cov_SS_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_SS_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind, GL_or_LG)
+
+
 if save_covs:
     if probe == '3x2pt':
+        # save as dict
         sio.savemat(
             f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.mat',
-            cov_SS_3x2pt_dict_6D)
+            cov_SS_3x2pt_dict_10D)
+        # save as npy array
+        np.save(
+            f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_4D.npy',
+            cov_SS_3x2pt_4D)
     else:
         np.save(
             f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}_6D.npy',
@@ -369,9 +396,6 @@ if compute_cNG:
 
 assert 1 > 2, 'stop here'
 
-path_ind = '/Users/davide/Documents/Lavoro/Programmi/SSC_restructured/config/common_data/ind'
-ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like.dat').astype('int') - 1
-ind_LL = ind[:npairs_auto, :]
 
 # load CosmoLike (Robin) and PySSC
 robins_cov_path = '/Users/davide/Documents/Lavoro/Programmi/SSC_paper_jan22/PySSC_vs_CosmoLike/Robin/cov_SS_full_sky_rescaled'
