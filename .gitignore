@@ -1,7 +1,17 @@
+<<<<<<< Updated upstream
 output/covmat
 **/.DS_Store
 
 
+=======
+
+
+# large files
+output/covmat/
+
+# osx files
+**/.DS_Store
+>>>>>>> Stashed changes
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
