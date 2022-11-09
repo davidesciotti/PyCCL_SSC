@@ -117,16 +117,34 @@ compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 # 1. input files (WF, ell, a, pk...)
 # 2. halo model recipe
 # 3. ordering of the resulting covariance matrix
-
 # * fanstastic collection of notebooks: https://github.com/LSSTDESC/CCLX
+
+
+# ! settings
+ell_recipe = 'ISTF'
+probe = 'WL'
+compute_cNG = False
+save_covs = True
+hm_recipe = 'Krause2017'
+GL_or_LG = 'GL'
+ell_min = 10
+ell_max = 5000
+nbl = 30
+zbins = 10
+# ! settings
+
+# get ind file to reshape the covariance later on
+path_ind = f'{project_path.parent}/ind_files'
+ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like_int.dat', dtype=int)
+ind_LL = ind[:zpairs_auto, :]
 
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
 Om_c0 = ISTF_fid.primary['Om_m0'] - ISTF_fid.primary['Om_b0']
-cosmo = ccl.Cosmology(Omega_c=Om_c0, Omega_b=ISTF_fid.primary['Om_b0'], w0=ISTF_fid.primary['w0'],
-                      wa=ISTF_fid.primary['w_a'], h=ISTF_fid.primary['h'], sigma8=ISTF_fid.primary['sigma8'],
-                      n_s=ISTF_fid.primary['n_s'], m_nu=ISTF_fid.primary['m_nu'],
+cosmo = ccl.Cosmology(Omega_c=Om_c0, Omega_b=ISTF_fid.primary['Om_b0'], w0=ISTF_fid.primary['w_0'],
+                      wa=ISTF_fid.primary['w_a'], h=ISTF_fid.primary['h_0'], sigma8=ISTF_fid.primary['sigma_8'],
+                      n_s=ISTF_fid.primary['n_s'], m_nu=ISTF_fid.extensions['m_nu'],
                       Omega_k=1 - (Om_c0 + ISTF_fid.primary['Om_b0']) - ISTF_fid.extensions['Om_Lambda0'])
 
 # Define redshift distribution of sources kernels
@@ -134,15 +152,13 @@ zmin, zmax, dz = 0.001, 2.5, 0.001
 ztab = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
 
 # these are the bin edges
-zi = np.array([
-    [zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
-    [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]
-])
-
-zbins = len(zi[0])
+# TODO import these from IST_fid
+zbins_edges = np.array([[zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
+                        [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]])
+assert (zbins == len(zbins_edges[0])), 'zbins and zbins_edges do not match'
 
 # get number of redshift pairs
-npairs_auto, npairs_asimm, npairs_tot = mm.get_pairs(zbins)
+zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_pairs(zbins)
 
 z_median = ISTF_fid.photoz_bins['z_median']
 n_gal = ISTF_fid.other_survey_specs['n_gal']
@@ -155,14 +171,14 @@ c0, z0, sigma0 = ISTF_fid.photoz_pdf['c_o'], ISTF_fid.photoz_pdf['z_o'], ISTF_fi
 nzEuclid = n_gal * (ztab / z_median * np.sqrt(2)) ** 2 * np.exp(-(ztab / z_median * np.sqrt(2)) ** 1.5)
 
 nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
-                                                    (erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) /
+                                                    (erf((ztab - z0 - c0 * zbins_edges[0, iz]) / np.sqrt(2) /
                                                          (1 + ztab) / sigma0) -
-                                                     erf((ztab - z0 - c0 * zi[1, iz]) / np.sqrt(2) /
+                                                     erf((ztab - z0 - c0 * zbins_edges[1, iz]) / np.sqrt(2) /
                                                          (1 + ztab) / sigma0)) +
                                                     c0 * (1 - fout) *
-                                                    (erf((ztab - zb - cb * zi[0, iz]) / np.sqrt(2) /
+                                                    (erf((ztab - zb - cb * zbins_edges[0, iz]) / np.sqrt(2) /
                                                          (1 + ztab) / sigmab) -
-                                                     erf((ztab - zb - cb * zi[1, iz]) / np.sqrt(2) /
+                                                     erf((ztab - zb - cb * zbins_edges[1, iz]) / np.sqrt(2) /
                                                          (1 + ztab) / sigmab))) for iz in range(zbins)])
 
 # normalize nz: this should be the denominator of Eq. (112) of IST:f
@@ -175,27 +191,17 @@ for i in range(zbins):
 # [plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
 # plt.show()
 
-# Import look-up tables for IAs
+# Intrinsic alignment and galaxy bias
 IAFILE = np.genfromtxt(project_path / 'input/scaledmeanlum-E2Sa.dat')
 FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1 + IAFILE[:, 0]) ** (-0.41) * IAFILE[:, 1] ** 2.17
-
-# Computes the WL (w/ and w/o IAs) and GCph kernels
-
-# WCS = [ ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz])) for iz in range(Nbins) ]
-
 FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Omega_b) / ccl.growth_factor(cosmo, 1 / (
         1 + IAFILE[:, 0]))
 
-# GALAXY KERNELS
+b_array = np.asarray([bias(z, zbins_edges) for z in ztab])
 
-# construct the bias array -
-b_array = np.asarray([bias(z, zi) for z in ztab])
-# it should be the same for all redshift bins:
-# b_array = np.repeat(b_array[:, np.newaxis], zbins, axis=1)  # this is useless, I can just pass the same array each
-# time in the call below
-
-wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False) for iz in
-       range(zbins)]
+# compute the kernels
+wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
+       for iz in range(zbins)]
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
 
@@ -214,27 +220,10 @@ a_arr = 1 / (1 + zlist[::-1])
 lk_arr = np.log(klist)  # it's the natural log, not log10
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
-# choose the ell binning
-ell_min = 10
-ell_max = 5000
-nbl = 30
 
-# ! settings
-ell_recipe = 'ISTF'
-probe = 'WL'
-compute_cNG = False
-save_covs = True
-hm_recipe = 'Krause2017'
-GL_or_LG = 'GL'
-# ! settings
-
-# for which_ells in ['ISTF', 'ISTNL']:
-# for hm_recipe in ['KiDS1000', 'Krause2017']:
 # for probe in ['WL', 'GC']:
 
-path_ind = '/Users/davide/Documents/Lavoro/Programmi/common_data/ind_files'
-ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like_int.dat', dtype=int)
-ind_LL = ind[:npairs_auto, :]
+
 
 if ell_recipe == 'ISTF':
     nbl = 30
@@ -278,10 +267,9 @@ print(
 #                 for jz in range(zbins)])
 
 # ! this has to go in a cfg file!!
-A_deg = 15e3
-f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
-n_gal = 30 * (180 * 60 / np.pi) ** 2
-sigma_e = 0.3
+f_sky = survey_area * (np.pi / 180) ** 2 / (4 * np.pi)
+n_gal = n_gal * (180 * 60 / np.pi) ** 2
+sigma_e = ISTF_fid.other_survey_specs['sigma_eps']
 
 # save wf and cl for validation
 # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
@@ -420,10 +408,10 @@ cov_Robin_2D = np.load(robins_cov_path + '/lmax5000_noextrap/davides_reshape/cov
 cov_PySSC_4D = np.load(project_path / 'input/CovMat-ShearShear-SSC-20bins-NL_flag_2_4D.npy')
 
 # reshape
-cov_SS_4D = mm.cov_6D_to_4D(cov_SS_6D, nbl=nbl, npairs=npairs_auto, ind=ind_LL)
-cov_SS_2D = mm.cov_4D_to_2D(cov_SS_4D, nbl=nbl, npairs_AB=npairs_auto, npairs_CD=None, block_index='vincenzo')
+cov_SS_4D = mm.cov_6D_to_4D(cov_SS_6D, nbl=nbl, npairs=zpairs_auto, ind=ind_LL)
+cov_SS_2D = mm.cov_4D_to_2D(cov_SS_4D, nbl=nbl, npairs_AB=zpairs_auto, npairs_CD=None, block_index='vincenzo')
 
-cov_Robin_4D = mm.cov_2D_to_4D(cov_Robin_2D, nbl=nbl, npairs=npairs_auto, block_index='vincenzo')
+cov_Robin_4D = mm.cov_2D_to_4D(cov_Robin_2D, nbl=nbl, npairs=zpairs_auto, block_index='vincenzo')
 cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl=nbl, zbins=10, probe='LL', ind=ind_LL)
 
 # save PyCCL 2D
