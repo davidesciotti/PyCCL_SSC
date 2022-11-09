@@ -8,17 +8,22 @@ import numpy as np
 import pyccl as ccl
 from scipy.special import erf
 import scipy.io as sio
+import ray
 
-# get project directory
-from statsmodels.tsa.base import prediction
+ray.shutdown()
+ray.init()
 
+# get project directory adn import useful modules
 project_path = Path.cwd().parent
 
-sys.path.append(f'{project_path}/lib')
+sys.path.append(f'{project_path.parent}/common_data/common_lib')
 import my_module as mm
 
 sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
 import ell_values_running as ell_utils
+
+sys.path.append(f'{project_path.parent}/common_data/common_config')
+import ISTF_fid_params as ISTF_fid
 
 matplotlib.use('Qt5Agg')
 
@@ -102,6 +107,8 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
     return cov_cNG_6D
 
 
+compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
+compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -116,8 +123,11 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
-cosmo = ccl.Cosmology(Omega_c=0.27, Omega_b=0.05, w0=-1., wa=0., h=0.67, sigma8=0.815583, n_s=0.96, m_nu=0.06,
-                      Omega_k=1 - (0.27 + 0.05) - 0.68)
+Om_c0 = ISTF_fid.primary['Om_m0'] - ISTF_fid.primary['Om_b0']
+cosmo = ccl.Cosmology(Omega_c=Om_c0, Omega_b=ISTF_fid.primary['Om_b0'], w0=ISTF_fid.primary['w0'],
+                      wa=ISTF_fid.primary['w_a'], h=ISTF_fid.primary['h'], sigma8=ISTF_fid.primary['sigma8'],
+                      n_s=ISTF_fid.primary['n_s'], m_nu=ISTF_fid.primary['m_nu'],
+                      Omega_k=1 - (Om_c0 + ISTF_fid.primary['Om_b0']) - ISTF_fid.extensions['Om_Lambda0'])
 
 # Define redshift distribution of sources kernels
 zmin, zmax, dz = 0.001, 2.5, 0.001
@@ -134,9 +144,15 @@ zbins = len(zi[0])
 # get number of redshift pairs
 npairs_auto, npairs_asimm, npairs_tot = mm.get_pairs(zbins)
 
-nzEuclid = 30 * (ztab / 0.9 * np.sqrt(2)) ** 2 * np.exp(-(ztab / 0.9 * np.sqrt(2)) ** 1.5)
+z_median = ISTF_fid.photoz_bins['z_median']
+n_gal = ISTF_fid.other_survey_specs['n_gal']
+survey_area = ISTF_fid.other_survey_specs['survey_area']
 
-fout, cb, zb, sigmab, c0, z0, sigma0 = 0.1, 1, 0, 0.05, 1, 0.1, 0.05
+fout = ISTF_fid.photoz_pdf['f_out']
+cb, zb, sigmab = ISTF_fid.photoz_pdf['c_b'], ISTF_fid.photoz_pdf['z_b'], ISTF_fid.photoz_pdf['sigma_b']
+c0, z0, sigma0 = ISTF_fid.photoz_pdf['c_o'], ISTF_fid.photoz_pdf['z_o'], ISTF_fid.photoz_pdf['sigma_o']
+
+nzEuclid = n_gal * (ztab / z_median * np.sqrt(2)) ** 2 * np.exp(-(ztab / z_median * np.sqrt(2)) ** 1.5)
 
 nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
                                                     (erf((ztab - z0 - c0 * zi[0, iz]) / np.sqrt(2) /
@@ -150,7 +166,7 @@ nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
                                                          (1 + ztab) / sigmab))) for iz in range(zbins)])
 
 # normalize nz: this should be the denominator of Eq. (112) of IST:f
-for i in range(10):
+for i in range(zbins):
     norm_factor = np.sum(nziEuclid[i, :]) * dz
     nziEuclid[i, :] /= norm_factor
 
@@ -220,7 +236,6 @@ path_ind = '/Users/davide/Documents/Lavoro/Programmi/common_data/ind_files'
 ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like_int.dat', dtype=int)
 ind_LL = ind[:npairs_auto, :]
 
-
 if ell_recipe == 'ISTF':
     nbl = 30
 elif ell_recipe == 'ISTNL':
@@ -262,6 +277,7 @@ print(
 #                  for iz in range(zbins)]
 #                 for jz in range(zbins)])
 
+# ! this has to go in a cfg file!!
 A_deg = 15e3
 f_sky = A_deg * (np.pi / 180) ** 2 / (4 * np.pi)
 n_gal = 30 * (180 * 60 / np.pi) ** 2
@@ -348,10 +364,11 @@ elif probe == 'GC':
 elif probe == '3x2pt':
     cov_SS_3x2pt_dict_10D = {}
     for A, B, C, D in probe_combinations_3x2pt:
-        cov_SS_3x2pt_dict_10D[A, B, C, D] = \
-            compute_SSC_PyCCL(cosmo, kernel_A=probe_wf_dict[A], kernel_B=probe_wf_dict[B],
-                              kernel_C=probe_wf_dict[C], kernel_D=probe_wf_dict[D],
-                              ell=ell, tkka=tkka, f_sky=f_sky, integration_method='qag_quad')
+        cov_SS_3x2pt_dict_10D[A, B, C, D] = compute_SSC_PyCCL(cosmo,
+                                                              kernel_A=probe_wf_dict[A], kernel_B=probe_wf_dict[B],
+                                                              kernel_C=probe_wf_dict[C], kernel_D=probe_wf_dict[D],
+                                                              ell=ell, tkka=tkka, f_sky=f_sky,
+                                                              integration_method='qag_quad')
 
     # TODO test this by loading the cov_SS_3x2pt_arr_10D from file (and then storing it into a dictionary)
 
@@ -365,7 +382,6 @@ elif probe == '3x2pt':
 
     # stack everything and reshape to 4D
     cov_SS_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_SS_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind, GL_or_LG)
-
 
 if save_covs:
     if probe == '3x2pt':
@@ -397,7 +413,6 @@ if compute_cNG:
             cov_cNG_6D)
 
 assert 1 > 2, 'stop here'
-
 
 # load CosmoLike (Robin) and PySSC
 robins_cov_path = '/Users/davide/Documents/Lavoro/Programmi/SSC_paper_jan22/PySSC_vs_CosmoLike/Robin/cov_SS_full_sky_rescaled'
