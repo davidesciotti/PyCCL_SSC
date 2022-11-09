@@ -107,6 +107,13 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
     return cov_cNG_6D
 
 
+def cl(cosmo, kernel_A, kernel_B, ell, Pk, zbins):
+    result = np.array([[ccl.angular_cl(cosmo, kernel_A[iz], kernel_B[jz], ell, p_of_k_a=Pk)
+                        for iz in range(zbins)]
+                       for jz in range(zbins)])
+    return result
+
+
 compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
 compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 ###############################################################################
@@ -131,13 +138,16 @@ ell_min = 10
 ell_max = 5000
 nbl = 30
 zbins = 10
+ind_ordering = 'vincenzo'
 # ! settings
 
-# get ind file to reshape the covariance later on
-path_ind = f'{project_path.parent}/ind_files'
-ind = np.genfromtxt(f'{path_ind}/indici_vincenzo_like_int.dat', dtype=int)
-ind_LL = ind[:zpairs_auto, :]
+# get number of redshift pairs
+zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_pairs(zbins)
 
+# get ind file to reshape the covariance later on
+ind = np.genfromtxt(f'{project_path.parent}/common_data/ind_files/indici_{ind_ordering}_like_int.dat', dtype=int)
+ind_LL = ind[:zpairs_auto, :]
+ind_GG = ind[-zpairs_auto:, :]
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -147,22 +157,23 @@ cosmo = ccl.Cosmology(Omega_c=Om_c0, Omega_b=ISTF_fid.primary['Om_b0'], w0=ISTF_
                       n_s=ISTF_fid.primary['n_s'], m_nu=ISTF_fid.extensions['m_nu'],
                       Omega_k=1 - (Om_c0 + ISTF_fid.primary['Om_b0']) - ISTF_fid.extensions['Om_Lambda0'])
 
-# Define redshift distribution of sources kernels
+################################## Define redshift distribution of sources kernels #####################################
 zmin, zmax, dz = 0.001, 2.5, 0.001
 ztab = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
+z_median = ISTF_fid.photoz_bins['z_median']
 
-# these are the bin edges
 # TODO import these from IST_fid
 zbins_edges = np.array([[zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
                         [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]])
 assert (zbins == len(zbins_edges[0])), 'zbins and zbins_edges do not match'
 
-# get number of redshift pairs
-zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_pairs(zbins)
-
-z_median = ISTF_fid.photoz_bins['z_median']
+# other useful parameters
 n_gal = ISTF_fid.other_survey_specs['n_gal']
 survey_area = ISTF_fid.other_survey_specs['survey_area']
+f_sky = survey_area * (np.pi / 180) ** 2 / (4 * np.pi)
+# n_gal_degsq = n_gal * (180 * 60 / np.pi) ** 2
+# sigma_e = ISTF_fid.other_survey_specs['sigma_eps']
+
 
 fout = ISTF_fid.photoz_pdf['f_out']
 cb, zb, sigmab = ISTF_fid.photoz_pdf['c_b'], ISTF_fid.photoz_pdf['z_b'], ISTF_fid.photoz_pdf['sigma_b']
@@ -220,9 +231,7 @@ a_arr = 1 / (1 + zlist[::-1])
 lk_arr = np.log(klist)  # it's the natural log, not log10
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
-
 # for probe in ['WL', 'GC']:
-
 
 
 if ell_recipe == 'ISTF':
@@ -261,15 +270,6 @@ ell, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_recipe)
 print(
     f'settings:\nwhich_ells = {ell_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
     f'\ncompute_cNG = {compute_cNG}')
-
-# CLL = np.array([[ccl.angular_cl(cosmo, wil[iz], wil[jz], ell, p_of_k_a=Pk)
-#                  for iz in range(zbins)]
-#                 for jz in range(zbins)])
-
-# ! this has to go in a cfg file!!
-f_sky = survey_area * (np.pi / 180) ** 2 / (4 * np.pi)
-n_gal = n_gal * (180 * 60 / np.pi) ** 2
-sigma_e = ISTF_fid.other_survey_specs['sigma_eps']
 
 # save wf and cl for validation
 # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
