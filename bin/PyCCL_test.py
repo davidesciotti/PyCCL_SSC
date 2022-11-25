@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyccl as ccl
 from scipy.special import erf
-import scipy.io as sio
 import ray
 
 ray.shutdown()
@@ -25,23 +24,14 @@ import ell_values_running as ell_utils
 
 sys.path.append(f'{project_path.parent}/common_data/common_config')
 import ISTF_fid_params as ISTF_fid
+import mpl_cfg
+
+sys.path.append(f'{project_path}/config')
+import PyCCL_config as cfg
 
 matplotlib.use('Qt5Agg')
-
 start_time = time.perf_counter()
-
-params = {'lines.linewidth': 3.5,
-          'font.size': 20,
-          'axes.labelsize': 'x-large',
-          'axes.titlesize': 'x-large',
-          'xtick.labelsize': 'x-large',
-          'ytick.labelsize': 'x-large',
-          'mathtext.fontset': 'stix',
-          'font.family': 'STIXGeneral',
-          'figure.figsize': (10, 10)
-          }
-plt.rcParams.update(params)
-markersize = 10
+plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 
 
 ###############################################################################
@@ -66,7 +56,7 @@ def b(i, z_mean):
 
 
 def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-    cov_SS_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
+    cov_SSC_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
     start_SSC_timer = time.perf_counter()
 
     for i in range(zbins):
@@ -74,17 +64,17 @@ def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
         for j in range(zbins):
             for k in range(zbins):
                 for l in range(zbins):
-                    cov_SS_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, kernel_A[i], kernel_B[j],
-                                                                                     ell, tkka,
-                                                                                     sigma2_B=None, fsky=f_sky,
-                                                                                     cltracer3=kernel_C[k],
-                                                                                     cltracer4=kernel_D[l],
-                                                                                     ell2=None,
-                                                                                     integration_method=integration_method)
+                    cov_SSC_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, kernel_A[i], kernel_B[j],
+                                                                                      ell, tkka,
+                                                                                      sigma2_B=None, fsky=f_sky,
+                                                                                      cltracer3=kernel_C[k],
+                                                                                      cltracer4=kernel_D[l],
+                                                                                      ell2=None,
+                                                                                      integration_method=integration_method)
         print(f'i-th redshift bins: {i}, computed in  {(time.perf_counter() - start):.2f} s')
     print(f'SSC computed in  {(time.perf_counter() - start_SSC_timer):.2f} s')
 
-    return cov_SS_6D
+    return cov_SSC_6D
 
 
 def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
@@ -97,7 +87,7 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
             for k in range(zbins):
                 for l in range(zbins):
                     cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, kernel_A[i], kernel_B[j],
-                                                                                      ell, tkka, fsky=f_sky,
+                                                                                      ell=ell, tkka=tkka, fsky=f_sky,
                                                                                       cltracer3=kernel_C[k],
                                                                                       cltracer4=kernel_D[l],
                                                                                       ell2=None,
@@ -111,25 +101,28 @@ def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, 
 def compute_3x2pt_PyCCL(PyCCL_func, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
                         probe_ordering, probe_combinations_3x2pt):
     # TODO finish this function
-    cov_SS_3x2pt_dict_10D = {}
+    cov_SSC_3x2pt_dict_10D = {}
     for A, B, C, D in probe_combinations_3x2pt:
         print('3x2pt: working on probe combination ', A, B, C, D)
-        cov_SS_3x2pt_dict_10D[A, B, C, D] = PyCCL_func(cosmo,
-                                                       probe_wf_dict[A], probe_wf_dict[B],
-                                                       probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
-                                                       f_sky, integration_method)
+        cov_SSC_3x2pt_dict_10D[A, B, C, D] = PyCCL_func(cosmo,
+                                                        probe_wf_dict[A], probe_wf_dict[B],
+                                                        probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
+                                                        f_sky, integration_method)
+        np.save(
+            f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
+            cov_SSC_3x2pt_dict_10D[A, B, C, D])
 
-    # TODO test this by loading the cov_SS_3x2pt_arr_10D from file (and then storing it into a dictionary)
+    # TODO test this by loading the cov_SSC_3x2pt_arr_10D from file (and then storing it into a dictionary)
     # symmetrize the matrix:
     LL = probe_ordering[0][0], probe_ordering[0][1]
     GL = probe_ordering[1][0], probe_ordering[1][1]  # ! what if I use LG? check (it should be fine...)
     GG = probe_ordering[2][0], probe_ordering[2][1]
     # note: the addition is only to have a singe tuple of strings, instead of a tuple of 2 tuples
-    cov_SS_3x2pt_dict_10D[GL + LL] = cov_SS_3x2pt_dict_10D[LL + GL][...]
-    cov_SS_3x2pt_dict_10D[GG + LL] = cov_SS_3x2pt_dict_10D[LL + GG][...]
-    cov_SS_3x2pt_dict_10D[GG + GL] = cov_SS_3x2pt_dict_10D[GL + GG][...]
+    cov_SSC_3x2pt_dict_10D[GL + LL] = cov_SSC_3x2pt_dict_10D[LL + GL][...]
+    cov_SSC_3x2pt_dict_10D[GG + LL] = cov_SSC_3x2pt_dict_10D[LL + GG][...]
+    cov_SSC_3x2pt_dict_10D[GG + GL] = cov_SSC_3x2pt_dict_10D[GL + GG][...]
 
-    return cov_SS_3x2pt_dict_10D
+    return cov_SSC_3x2pt_dict_10D
 
 
 def cl_PyCCL(cosmo, kernel_A, kernel_B, ell, Pk, zbins):
@@ -153,29 +146,21 @@ compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 
 
 # ! settings
-ell_recipe = 'ISTF'
-probes = ('WL', 'GC', '3x2pt')
-probes = ('WL', 'GC')
-which_NGs = ['SS', 'cNG']
-compute_cNG = True
-save_covs = True
-hm_recipe = 'Krause2017'
-GL_or_LG = 'GL'
-ell_min = 10
-ell_max = 5000
-nbl = 30
-zbins = 3
-ind_ordering = 'vincenzo'
-use_ray = False  # TODO finish this!
+ell_recipe = cfg.general_cfg['ell_recipe']
+probes = cfg.general_cfg['probes']
+which_NGs = cfg.general_cfg['which_NGs']
+save_covs = cfg.general_cfg['save_covs']
+hm_recipe = cfg.general_cfg['hm_recipe']
+GL_or_LG = cfg.general_cfg['GL_or_LG']
+ell_min = cfg.general_cfg['ell_min']
+ell_max = cfg.general_cfg['ell_max']
+nbl = cfg.general_cfg['nbl']
+zbins = cfg.general_cfg['zbins']
+use_ray = cfg.general_cfg['use_ray']  # TODO finish this!
 # ! settings
 
 # get number of redshift pairs
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_pairs(zbins)
-
-# get ind file to reshape the covariance later on
-ind = np.genfromtxt(f'{project_path.parent}/common_data/ind_files/indici_{ind_ordering}_like_int.dat', dtype=int)
-ind_LL = ind[:zpairs_auto, :]
-ind_GG = ind[-zpairs_auto:, :]
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -243,6 +228,15 @@ wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[
        for iz in range(zbins)]
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
+
+# save wf and cl for validation
+# np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
+# np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
+# np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
+# np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
+# np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+# np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
+
 
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
@@ -327,10 +321,10 @@ halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
                                                  fourier_analytic=True, projected_analytic=False,
                                                  cumul2d_analytic=False, truncated=True)
 
-# it was p_of_k_a=Pk, but it should use the LINEAR power spectrum (see documentation:
+# it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
 # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
-# 🐛 bug solved: normprof shoud be True
-# 🐛 bug solved?: p_of_k_a=None instead of Pk
+# 🐛 bug fixed: normprof shoud be True
+# 🐛 bug fixed?: p_of_k_a=None instead of Pk
 tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              prof1=halo_profile, prof2=None, prof12_2pt=None,
                                              prof3=None, prof4=None, prof34_2pt=None,
@@ -345,99 +339,100 @@ print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halo
 #     compute_SSC_PyCCL = compute_SSC_PyCCL_ray.remote
 #     compute_cNG_PyCCL = compute_cNG_PyCCL_ray.remote
 
+
+integration_method_dict = {
+    'WL': {
+        'SSC': 'spline',
+        'cNG': 'spline',
+    },
+    'GC': {
+        'SSC': 'qag_quad',
+        'cNG': 'qag_quad',
+    },
+    '3x2pt': {
+        'SSC': 'qag_quad',
+        'cNG': 'spline',
+    }
+}
+
 for probe in probes:
     for which_NG in which_NGs:
 
         assert probe in ['WL', 'GC', '3x2pt'], 'probe must be either WL, GC, or 3x2pt'
-        assert which_NG in ['SS', 'cNG'], 'which_NG must be either SS or cNG'
+        assert which_NG in ['SSC', 'cNG'], 'which_NG must be either SSC or cNG'
+        assert ell_recipe in ['ISTF', 'ISTNL'], 'ell_recipe must be either ISTF or ISTNL'
 
         # === ell values ===
-        if ell_recipe == 'ISTF':
-            nbl = 30
-        elif ell_recipe == 'ISTNL':
-            nbl = 20
-        else:
-            raise ValueError('ell_recipe must be "ISTF" or "ISTNL"')
+        if ell_recipe == 'ISTF' and nbl != 30:
+            print('Warning: ISTF uses 30 ell bins')
+        elif ell_recipe == 'ISTNL' and nbl != 20:
+            print('Warning: ISTNL uses 20 ell bins')
 
         if probe == 'WL':
             ell_max = 5000
             kernel = wil
-            if which_NG == 'SS':
-                integration_method = 'spline'
-            elif which_NG == 'cNG':
-                integration_method = 'spline'
         elif probe == 'GC':
             ell_max = 3000
             kernel = wig
-            if which_NG == 'SS':
-                integration_method = 'qag_quad'
-            elif which_NG == 'cNG':
-                integration_method = 'spline'
         elif probe == '3x2pt':
             ell_max = 3000
         else:
             raise ValueError('probe must be "WL", "GC" or "3x2pt"')
 
-        nbl = 2
-        print('XXX DELETE this!')
-
-        ell, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_recipe)
+        ell, delta_ell = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_recipe)
 
         np.savetxt(f'{project_path}/output/ell_values/ell_values_{probe}.txt', ell)
+        np.savetxt(f'{project_path}/output/ell_values/delta_ell_values_{probe}.txt', delta_ell)
 
         # just a check on the settings
-        print(
-            f'\n****************** settings ****************:\nwhich_ells = {ell_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}\nprobe = {probe}'
-            f'\ncompute_cNG = {compute_cNG}\nwhich_NG = {which_NG}')
-
-        # save wf and cl for validation
-        # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
-        # np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
-        # np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
-        # np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
-        # np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
-        # np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
+        print(f'\n****************** settings ****************'
+              f'\nprobe = {probe}\nwhich_NG = {which_NG}'
+              f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
+              f'\nwhich_ells = {ell_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}')
 
         # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
         # * ok: the check that the matrix symmetric in ell1, ell2 is below
-        # print(f'check: is cov_SS_{probe}[ell1, ell2, ...] == cov_SS_{probe}[ell2, ell1, ...]?', np.allclose(cov_SS_6D, np.transpose(cov_SS_6D, (1, 0, 2, 3, 4, 5)), rtol=1e-7, atol=0))
+        # print(f'check: is cov_SSC_{probe}[ell1, ell2, ...] == cov_SSC_{probe}[ell2, ell1, ...]?', np.allclose(cov_6D, np.transpose(cov_6D, (1, 0, 2, 3, 4, 5)), rtol=1e-7, atol=0))
 
-        # ! =============================================== compute covs ===================================================
+        # ! =============================================== compute covs ===============================================
 
-        if which_NG == 'SS':
+        if which_NG == 'SSC':
             PyCCL_whichNG_funct = compute_SSC_PyCCL
         elif which_NG == 'cNG':
             PyCCL_whichNG_funct = compute_cNG_PyCCL
 
         if probe in ['WL', 'GC']:
-            cov_SS_6D = PyCCL_whichNG_funct(cosmo, kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
-                                            ell=ell, tkka=tkka, f_sky=f_sky, integration_method=integration_method)
+            cov_6D = PyCCL_whichNG_funct(cosmo, kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
+                                         ell=ell, tkka=tkka, f_sky=f_sky,
+                                         integration_method=integration_method_dict[probe][which_NG])
         elif probe == '3x2pt':
-            # * new way
-            cov_SS_3x2pt_dict_10D = compute_3x2pt_PyCCL(PyCCL_whichNG_funct, cosmo, probe_wf_dict, ell, tkka, f_sky,
-                                                        'qag_quad',
-                                                        probe_ordering, probe_combinations_3x2pt)
+            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(PyCCL_whichNG_funct, cosmo, probe_wf_dict, ell, tkka, f_sky,
+                                                     'qag_quad',
+                                                     probe_ordering, probe_combinations_3x2pt)
 
             # stack everything and reshape to 4D
-            cov_SS_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_SS_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
-                                                          GL_or_LG)
+            cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
+                                                       GL_or_LG)
 
         if save_covs:
 
-            filename = f'{project_path}/output/covmat/cov_PyCCL_SS_{probe}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}' \
-                       f'_hm_recipe{hm_recipe}'
+            filename = f'{project_path}/output/covmat/cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ells{ell_recipe}' \
+                       f'_ellmax{ell_max}_hm_recipe{hm_recipe}'
 
             if probe in ['WL', 'GC']:
-                np.save(f'{filename}_6D.npy', cov_SS_6D)
+                np.save(f'{filename}_6D.npy', cov_6D)
 
             elif probe == '3x2pt':
                 # save both as dict and as 4D npy array
-                np.save(f'{filename}_4D.npy', cov_SS_3x2pt_4D)
-
                 with open(f'{filename}_10D.pickle', 'wb') as handle:
-                    pickle.dump(cov_SS_3x2pt_dict_10D, handle)
+                    pickle.dump(cov_3x2pt_dict_10D, handle)
+
+                np.save(f'{filename}_4D.npy', cov_3x2pt_4D)
 
 assert 1 > 2, 'stop here'
+
+ind = np.load(
+    f'{project_path.parent}/common_data/ind_files/variable_zbins/{triu_or_tril}_{row_col}-wise/indices_{triu_or_tril}_{row_col}-wise_zbins{zbins}.dat')
 
 # load CosmoLike (Robin) and PySSC
 robins_cov_path = '/Users/davide/Documents/Lavoro/Programmi/SSC_paper_jan22/PySSC_vs_CosmoLike/Robin/cov_SS_full_sky_rescaled'
@@ -445,34 +440,34 @@ cov_Robin_2D = np.load(robins_cov_path + '/lmax5000_noextrap/davides_reshape/cov
 cov_PySSC_4D = np.load(project_path / 'input/CovMat-ShearShear-SSC-20bins-NL_flag_2_4D.npy')
 
 # reshape
-cov_SS_4D = mm.cov_6D_to_4D(cov_SS_6D, nbl=nbl, npairs=zpairs_auto, ind=ind_LL)
-cov_SS_2D = mm.cov_4D_to_2D(cov_SS_4D, nbl=nbl, npairs_AB=zpairs_auto, npairs_CD=None, block_index='vincenzo')
+cov_SSC_4D = mm.cov_6D_to_4D(cov_6D, nbl=nbl, npairs=zpairs_auto, ind=ind_LL)
+cov_SSC_2D = mm.cov_4D_to_2D(cov_SSC_4D, nbl=nbl, npairs_AB=zpairs_auto, npairs_CD=None, block_index='vincenzo')
 
 cov_Robin_4D = mm.cov_2D_to_4D(cov_Robin_2D, nbl=nbl, npairs=zpairs_auto, block_index='vincenzo')
-cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl=nbl, zbins=10, probe='LL', ind=ind_LL)
+cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl=nbl, zbins=zbins, probe='LL', ind=ind_LL)
 
 # save PyCCL 2D
-np.save(f'{project_path}/output/cov_PyCCL_nbl{nbl}_ells{ell_recipe}_2D.npy', cov_SS_2D)
+np.save(f'{project_path}/output/cov_PyCCL_nbl{nbl}_ells{ell_recipe}_2D.npy', cov_SSC_2D)
 
 assert 1 > 2
 
 # check if the matrics are symmetric in ell1 <-> ell2
 print(np.allclose(cov_Robin_4D, cov_Robin_4D.transpose(1, 0, 2, 3), rtol=1e-10))
-print(np.allclose(cov_SS_4D, cov_SS_4D.transpose(1, 0, 2, 3), rtol=1e-10))
+print(np.allclose(cov_SSC_4D, cov_SSC_4D.transpose(1, 0, 2, 3), rtol=1e-10))
 print(np.allclose(cov_PySSC_4D, cov_PySSC_4D.transpose(1, 0, 2, 3), rtol=1e-10))
 
-mm.matshow(cov_SS_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PyCCL_6D')
+mm.matshow(cov_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PyCCL_6D')
 mm.matshow(cov_PySSC_6D[:, :, 0, 0, 0, 0], log=True, title='cov_PySSC_6D')
 
 # show the various versions
 mm.matshow(cov_PySSC_4D[:, :, 0, 0], log=True, title='cov_PySSC_4D')
 mm.matshow(cov_Robin_4D[:, :, 0, 0], log=True, title='cov_Robin_4D')
-mm.matshow(cov_SS_4D[:, :, 0, 0], log=True, title='cov_PyCCL_4D')
+mm.matshow(cov_SSC_4D[:, :, 0, 0], log=True, title='cov_PyCCL_4D')
 
 # compute and plot percent difference (not in log scale)
-PyCCL_vs_rob = mm.compare_2D_arrays(cov_SS_4D[:, :, 0, 0], cov_Robin_4D[:, :, 0, 0], 'cov_PyCCL_4D', 'cov_Robin_4D',
+PyCCL_vs_rob = mm.compare_2D_arrays(cov_SSC_4D[:, :, 0, 0], cov_Robin_4D[:, :, 0, 0], 'cov_PyCCL_4D', 'cov_Robin_4D',
                                     log_arr=True)
-PySSC_vs_PyCCL = mm.compare_2D_arrays(cov_SS_4D[:, :, 0, 0], cov_PySSC_4D[:, :, 0, 0], 'cov_PyCCL_4D',
+PySSC_vs_PyCCL = mm.compare_2D_arrays(cov_SSC_4D[:, :, 0, 0], cov_PySSC_4D[:, :, 0, 0], 'cov_PyCCL_4D',
                                       'cov_PySSC_4D', log_arr=True)
 
 # mm.matshow(rob_vs_PyCCL[:, :, 0, 0], log=False, title='rob_vs_PyCCL [%]')
@@ -481,7 +476,7 @@ PySSC_vs_PyCCL = mm.compare_2D_arrays(cov_SS_4D[:, :, 0, 0], cov_PySSC_4D[:, :, 
 # correlation matrices
 corr_PySSC_4D = mm.correlation_from_covariance(cov_PySSC_4D[:, :, 0, 0])
 corr_Robin_4D = mm.correlation_from_covariance(cov_Robin_4D[:, :, 0, 0])
-corr_PyCCL_4D = mm.correlation_from_covariance(cov_SS_4D[:, :, 0, 0])
+corr_PyCCL_4D = mm.correlation_from_covariance(cov_SSC_4D[:, :, 0, 0])
 
 corr_PyCCL_vs_rob = mm.compare_2D_arrays(corr_PyCCL_4D, corr_Robin_4D, 'corr_PyCCL_4D', 'corr_Robin_4D', log_arr=False)
 corr_PySSC_vs_PyCCL = mm.compare_2D_arrays(corr_PyCCL_4D, corr_PySSC_4D, 'corr_PyCCL_4D', 'corr_PySSC_4D',
