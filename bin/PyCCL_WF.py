@@ -19,13 +19,15 @@ project_path = Path.cwd().parent
 sys.path.append(f'{project_path.parent}/common_data/common_lib')
 import my_module as mm
 
-# sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
-# import ell_values as ell_utils
+sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
+import ell_values_running as ell_utils
+
+sys.path.append(f'{project_path.parent}/common_data/common_config')
+import ISTF_fid_params as ISTF_fid
+import mpl_cfg
 
 sys.path.append(f'{project_path}/config')
 import PyCCL_config as cfg
-import ISTF_fid_params as ISTF_fid
-import mpl_cfg
 
 matplotlib.use('Qt5Agg')
 start_time = time.perf_counter()
@@ -53,76 +55,6 @@ def b(i, z_mean):
     return np.sqrt(1 + z_mean[i])
 
 
-def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-    cov_SSC_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-    start_SSC_timer = time.perf_counter()
-
-    for i in range(zbins):
-        start = time.perf_counter()
-        for j in range(zbins):
-            for k in range(zbins):
-                for l in range(zbins):
-                    cov_SSC_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, kernel_A[i], kernel_B[j],
-                                                                                      ell, tkka,
-                                                                                      sigma2_B=None, fsky=f_sky,
-                                                                                      cltracer3=kernel_C[k],
-                                                                                      cltracer4=kernel_D[l],
-                                                                                      ell2=None,
-                                                                                      integration_method=integration_method)
-        print(f'i-th redshift bins: {i}, computed in  {(time.perf_counter() - start):.2f} s')
-    print(f'SSC computed in  {(time.perf_counter() - start_SSC_timer):.2f} s')
-
-    return cov_SSC_6D
-
-
-def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-    cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-    start_cNG_timer = time.perf_counter()
-
-    for i in range(zbins):
-        start = time.perf_counter()
-        for j in range(zbins):
-            for k in range(zbins):
-                for l in range(zbins):
-                    cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, kernel_A[i], kernel_B[j],
-                                                                                      ell=ell, tkka=tkka, fsky=f_sky,
-                                                                                      cltracer3=kernel_C[k],
-                                                                                      cltracer4=kernel_D[l],
-                                                                                      ell2=None,
-                                                                                      integration_method=integration_method)
-        print(f'i-th redshift bins: {i}, computed in  {(time.perf_counter() - start):.2f} s')
-    print(f'cNG computed in {(time.perf_counter() - start_cNG_timer):.2f} s')
-
-    return cov_cNG_6D
-
-
-def compute_3x2pt_PyCCL(PyCCL_func, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
-                        probe_ordering, probe_combinations_3x2pt):
-    # TODO finish this function
-    cov_SSC_3x2pt_dict_10D = {}
-    for A, B, C, D in probe_combinations_3x2pt:
-        print('3x2pt: working on probe combination ', A, B, C, D)
-        cov_SSC_3x2pt_dict_10D[A, B, C, D] = PyCCL_func(cosmo,
-                                                        probe_wf_dict[A], probe_wf_dict[B],
-                                                        probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
-                                                        f_sky, integration_method)
-        np.save(
-            f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
-            cov_SSC_3x2pt_dict_10D[A, B, C, D])
-
-    # TODO test this by loading the cov_SSC_3x2pt_arr_10D from file (and then storing it into a dictionary)
-    # symmetrize the matrix:
-    LL = probe_ordering[0][0], probe_ordering[0][1]
-    GL = probe_ordering[1][0], probe_ordering[1][1]  # ! what if I use LG? check (it should be fine...)
-    GG = probe_ordering[2][0], probe_ordering[2][1]
-    # note: the addition is only to have a singe tuple of strings, instead of a tuple of 2 tuples
-    cov_SSC_3x2pt_dict_10D[GL + LL] = cov_SSC_3x2pt_dict_10D[LL + GL][...]
-    cov_SSC_3x2pt_dict_10D[GG + LL] = cov_SSC_3x2pt_dict_10D[LL + GG][...]
-    cov_SSC_3x2pt_dict_10D[GG + GL] = cov_SSC_3x2pt_dict_10D[GL + GG][...]
-
-    return cov_SSC_3x2pt_dict_10D
-
-
 def cl_PyCCL(cosmo, kernel_A, kernel_B, ell, Pk, zbins):
     result = np.array([[ccl.angular_cl(cosmo, kernel_A[iz], kernel_B[jz], ell, p_of_k_a=Pk)
                         for iz in range(zbins)]
@@ -130,27 +62,6 @@ def cl_PyCCL(cosmo, kernel_A, kernel_B, ell, Pk, zbins):
     return result
 
 
-def compute_ells(nbl: int, ell_min: int, ell_max: int, recipe):
-    """
-    doesn't output a dictionary (i.e., is single-probe), which is also cleaner
-    """
-    if recipe == 'ISTF':
-        ell_bins = np.logspace(np.log10(ell_min), np.log10(ell_max), nbl + 1)
-        ells = (ell_bins[1:] + ell_bins[:-1]) / 2
-        deltas = np.diff(ell_bins)
-    elif recipe == 'ISTNL':
-        ell_bins = np.linspace(np.log(ell_min), np.log(ell_max), nbl + 1)
-        ells = (ell_bins[:-1] + ell_bins[1:]) / 2.
-        ells = np.exp(ells)
-        deltas = np.diff(np.exp(ell_bins))
-    else:
-        raise ValueError('recipe must be either "ISTF" or "ISTNL"')
-
-    return ells, deltas
-
-
-compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
-compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -177,9 +88,7 @@ use_ray = cfg.general_cfg['use_ray']  # TODO finish this!
 # ! settings
 
 # get number of redshift pairs
-zpairs_auto = int((zbins * (zbins + 1)) / 2)
-zpairs_cross = zbins ** 2
-zpairs_3x2pt = 2 * zpairs_auto + zpairs_cross
+zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -192,6 +101,7 @@ cosmo = ccl.Cosmology(Omega_c=Om_c0, Omega_b=ISTF_fid.primary['Om_b0'], w0=ISTF_
 ################################## Define redshift distribution of sources kernels #####################################
 zmin, zmax, dz = 0.001, 2.5, 0.001
 ztab = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
+
 
 # for CosmoLike
 # zmin, zmax, zsteps = 0.001, 4., 10_000
@@ -229,10 +139,20 @@ nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
                                                      erf((ztab - zb - cb * zbins_edges[1, iz]) / np.sqrt(2) /
                                                          (1 + ztab) / sigmab))) for iz in range(zbins)])
 
+
 # normalize nz: this should be the denominator of Eq. (112) of IST:f
 for i in range(zbins):
     norm_factor = np.sum(nziEuclid[i, :]) * dz
     nziEuclid[i, :] /= norm_factor
+
+# ! save nziEuclid for CosmoLike
+# nziEuclid_tosave = np.insert(nziEuclid.copy(), values=ztab, obj=0, axis=0).T
+
+
+# plt.xlabel('$z$')
+# plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
+# [plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
+# plt.show()
 
 # Intrinsic alignment and galaxy bias
 IAFILE = np.genfromtxt(project_path / 'input/scaledmeanlum-E2Sa.dat')
@@ -247,6 +167,16 @@ wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[
        for iz in range(zbins)]
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
+
+# save wf and cl for validation
+# np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
+# np.save(project_path / 'output/wl_and_cl_validation/wil_array.npy', wil_array)
+# np.save(project_path / 'output/wl_and_cl_validation/wig_array.npy', wig_array)
+# np.save(project_path / 'output/wl_and_cl_validation/ell.npy', ell)
+# np.save(project_path / 'output/wl_and_cl_validation/C_LL.npy', CLL)
+# np.save(project_path / 'output/wl_and_cl_validation/nziEuclid.npy', nziEuclid)
+
+assert 1 > 2, 'stop here'
 
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
@@ -341,13 +271,6 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              normprof1=True, normprof2=True, normprof3=True, normprof4=True,
                                              p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
                                              extrap_order_hik=1, use_log=False)
-# ! delete this
-tkka = ccl.halos.halo_model.halomod_Tk3D_SSC_linear_bias(cosmo, hmc,
-                                                         prof1=halo_profile, prof2=None, prof12_2pt=None,
-                                                         prof3=None, prof4=None, prof34_2pt=None,
-                                                         normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                                         p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
-                                                         extrap_order_hik=1, use_log=False)
 
 print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
 
@@ -356,8 +279,6 @@ print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halo
 #     compute_SSC_PyCCL = compute_SSC_PyCCL_ray.remote
 #     compute_cNG_PyCCL = compute_cNG_PyCCL_ray.remote
 
-
-assert 1 > 2
 
 integration_method_dict = {
     'WL': {
@@ -398,7 +319,7 @@ for probe in probes:
         else:
             raise ValueError('probe must be "WL", "GC" or "3x2pt"')
 
-        ell, delta_ell = compute_ells(nbl, ell_min, ell_max, ell_recipe)
+        ell, delta_ell = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_recipe)
 
         np.savetxt(f'{project_path}/output/ell_values/ell_values_{probe}.txt', ell)
         np.savetxt(f'{project_path}/output/ell_values/delta_ell_values_{probe}.txt', delta_ell)
@@ -467,6 +388,9 @@ cov_PySSC_6D = mm.cov_4D_to_6D(cov_PySSC_4D, nbl=nbl, zbins=zbins, probe='LL', i
 
 # save PyCCL 2D
 np.save(f'{project_path}/output/cov_PyCCL_nbl{nbl}_ells{ell_recipe}_2D.npy', cov_SSC_2D)
+
+# save
+assert 1 > 2
 
 # check if the matrics are symmetric in ell1 <-> ell2
 print(np.allclose(cov_Robin_4D, cov_Robin_4D.transpose(1, 0, 2, 3), rtol=1e-10))
