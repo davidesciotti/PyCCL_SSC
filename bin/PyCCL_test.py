@@ -19,8 +19,8 @@ project_path = Path.cwd().parent
 sys.path.append(f'{project_path.parent}/common_data/common_lib')
 import my_module as mm
 
-# sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
-# import ell_values as ell_utils
+sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
+import ell_values as ell_utils
 
 sys.path.append(f'{project_path}/config')
 import PyCCL_config as cfg
@@ -264,6 +264,14 @@ a_arr = 1 / (1 + zlist[::-1])
 lk_arr = np.log(klist)  # it's the natural log, not log10
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
+
+# ! compute cls, just as a test
+ells_LL, _ = compute_ells(nbl=30, ell_min=10, ell_max=5000, recipe='ISTF')
+cl_LL = cl_PyCCL(cosmo, wil, wil, ells_LL, Pk, zbins)
+# TODO introduce one by one the infredients from wf_cl_main/lib
+
+assert 1 > 2
+
 # === 3x2pt stuff ===
 probe_wf_dict = {
     'L': wil,
@@ -341,14 +349,6 @@ tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
                                              normprof1=True, normprof2=True, normprof3=True, normprof4=True,
                                              p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
                                              extrap_order_hik=1, use_log=False)
-# ! delete this
-tkka = ccl.halos.halo_model.halomod_Tk3D_SSC_linear_bias(cosmo, hmc,
-                                                         prof1=halo_profile, prof2=None, prof12_2pt=None,
-                                                         prof3=None, prof4=None, prof34_2pt=None,
-                                                         normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                                         p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
-                                                         extrap_order_hik=1, use_log=False)
-
 print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
 
 # re-define the functions if using ray
