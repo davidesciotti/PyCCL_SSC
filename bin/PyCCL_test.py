@@ -22,6 +22,9 @@ import my_module as mm
 sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
 import ell_values as ell_utils
 
+sys.path.append(f'../../cl_v2/lib')
+import wf_cl_lib
+
 sys.path.append(f'{project_path}/config')
 import PyCCL_config as cfg
 import ISTF_fid_params as ISTF_fid
@@ -35,22 +38,6 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 ###############################################################################
 ###############################################################################
 ###############################################################################
-
-def bias(z, zi):
-    zbins = len(zi[0])
-    z_minus = zi[0, :]  # lower edge of z bins
-    z_plus = zi[1, :]  # upper edge of z bins
-    z_mean = (z_minus + z_plus) / 2  # cener of the z bins
-
-    for i in range(zbins):
-        if z_minus[i] <= z < z_plus[i]:
-            return b(i, z_mean)
-        if z > z_plus[-1]:  # max redshift bin
-            return b(9, z_mean)
-
-
-def b(i, z_mean):
-    return np.sqrt(1 + z_mean[i])
 
 
 def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
@@ -241,6 +228,9 @@ FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Om
         1 + IAFILE[:, 0]))
 
 b_array = np.asarray([bias(z, zbins_edges) for z in ztab])
+b_array_v2 = wf_cl_lib.build_galaxy_bias_2d_arr(None, None, zbins, ztab, 'step-wise', plot_bias=False)
+
+assert False
 
 # compute the kernels
 wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
@@ -264,11 +254,10 @@ a_arr = 1 / (1 + zlist[::-1])
 lk_arr = np.log(klist)  # it's the natural log, not log10
 Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
-
 # ! compute cls, just as a test
-ells_LL, _ = compute_ells(nbl=30, ell_min=10, ell_max=5000, recipe='ISTF')
+ells_LL, _ = ell_utils.compute_ells(nbl=30, ell_min=10, ell_max=5000, recipe='ISTF')
 cl_LL = cl_PyCCL(cosmo, wil, wil, ells_LL, Pk, zbins)
-# TODO introduce one by one the infredients from wf_cl_main/lib
+# TODO introduce one by one the ingredients from wf_cl_main/lib
 
 assert 1 > 2
 
