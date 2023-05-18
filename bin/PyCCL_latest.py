@@ -19,6 +19,7 @@ project_path = Path.cwd().parent
 
 sys.path.append(f'../../common_data/common_lib')
 import my_module as mm
+import cosmo_lib
 
 sys.path.append(f'../../common_data/common_config')
 import ISTF_fid_params as ISTF_fid
@@ -150,9 +151,12 @@ f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 # get number of redshift pairs
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
 
+# ! compute cls, just as a test
+ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
+
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
-cosmo = wf_cl_lib.instantiate_ISTFfid_PyCCL_cosmo_obj()
+cosmo_ccl = wf_cl_lib.instantiate_ISTFfid_PyCCL_cosmo_obj()
 
 # source redshift distribution, default ISTF values for bin edges & analytical prescription for the moment
 niz_unnormalized_arr = np.asarray(
@@ -166,43 +170,23 @@ galaxy_bias_2d_array = wf_cl_lib.build_galaxy_bias_2d_arr(bias_values=None, z_va
                                                           plot_bias=False)
 
 # IA bias
-ia_bias_1d_array = wf_cl_lib.build_IA_bias_1d_arr(z_grid, lumin_ratio=None, cosmo=cosmo,
+ia_bias_1d_array = wf_cl_lib.build_IA_bias_1d_arr(z_grid, input_lumin_ratio=None, cosmo=cosmo_ccl,
                                                   A_IA=None, eta_IA=None, beta_IA=None, C_IA=None, growth_factor=None,
                                                   Omega_m=None)
 
 # # ! compute tracer objects
-wf_lensing = [ccl.tracers.WeakLensingTracer(cosmo, dndz=(z_grid, n_of_z[:, zbin_idx]),
+wf_lensing = [ccl.tracers.WeakLensingTracer(cosmo_ccl, dndz=(z_grid, n_of_z[:, zbin_idx]),
                                             ia_bias=(z_grid, ia_bias_1d_array), use_A_ia=False)
               for zbin_idx in range(zbins)]
 
-wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(z_grid, n_of_z[:, zbin_idx]),
+wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_grid, n_of_z[:, zbin_idx]),
                                             bias=(z_grid, galaxy_bias_2d_array[:, zbin_idx]),
                                             mag_bias=None)
              for zbin_idx in range(zbins)]
 
-
-# Import fiducial P(k,z)
-PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
-
-# ! XXX are the units correct?
-# Populate vectors for z, k [1/Mpc], and P(k,z) [Mpc^3]
-zlist = np.unique(PkFILE[:, 0])
-k_points = int(len(PkFILE[:, 2]) / len(zlist))
-klist = PkFILE[:k_points, 1] * cosmo.cosmo.params.h
-z_points = len(zlist)
-Pklist = PkFILE[:, 3].reshape(z_points, k_points) / cosmo.cosmo.params.h ** 3
-
-# Create a Pk2D object
-a_arr = 1 / (1 + zlist[::-1])
-lk_arr = np.log(klist)  # it's the natural log, not log10
-Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
-
-# ! compute cls, just as a test
-ells_LL, _ = ell_utils.compute_ells(nbl=30, ell_min=10, ell_max=5000, recipe='ISTF')
-cl_LL = wf_cl_lib.cl_PyCCL(wf_lensing, wf_lensing, ells_LL, zbins, None, cosmo)
-# TODO introduce one by one the ingredients from wf_cl_main/lib
-
-assert 1 > 2
+# cl_LL_3D = wf_cl_lib.cl_PyCCL(wf_lensing, wf_lensing, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
+# cl_GL_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_lensing, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
+# cl_GG_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_galaxy, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 
 # === 3x2pt stuff ===
 probe_wf_dict = {
@@ -253,16 +237,16 @@ else:
 # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
 
 # mass function
-massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
 
 # halo bias
-hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo, mass_def=mass_def, mass_def_strict=True)
+hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
 
 # concentration-mass relation
 
 # TODO understand better this object. We're calling the abstract class, is this ok?
 # HMCalculator
-hmc = ccl.halos.halo_model.HMCalculator(cosmo, massfunc, hbias, mass_def=mass_def,
+hmc = ccl.halos.halo_model.HMCalculator(cosmo_ccl, massfunc, hbias, mass_def=mass_def,
                                         log10M_min=8.0, log10M_max=16.0, nlog10M=128,
                                         integration_method_M='simpson', k_min=1e-05)
 
@@ -275,11 +259,11 @@ halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
 # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
 # 🐛 bug fixed: normprof shoud be True
 # 🐛 bug fixed?: p_of_k_a=None instead of Pk
-tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo, hmc,
+tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
                                              prof1=halo_profile, prof2=None, prof12_2pt=None,
                                              prof3=None, prof4=None, prof34_2pt=None,
                                              normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                             p_of_k_a=None, lk_arr=lk_arr, a_arr=a_arr, extrap_order_lok=1,
+                                             p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
                                              extrap_order_hik=1, use_log=False)
 print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
 
@@ -353,11 +337,11 @@ for probe in probes:
             PyCCL_whichNG_funct = compute_cNG_PyCCL
 
         if probe in ['WL', 'GC']:
-            cov_6D = PyCCL_whichNG_funct(cosmo, kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
+            cov_6D = PyCCL_whichNG_funct(cosmo_ccl, kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
                                          ell=ell, tkka=tkka, f_sky=f_sky,
                                          integration_method=integration_method_dict[probe][which_NG])
         elif probe == '3x2pt':
-            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(PyCCL_whichNG_funct, cosmo, probe_wf_dict, ell, tkka, f_sky,
+            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(PyCCL_whichNG_funct, cosmo_ccl, probe_wf_dict, ell, tkka, f_sky,
                                                      'qag_quad',
                                                      probe_ordering, probe_combinations_3x2pt)
 

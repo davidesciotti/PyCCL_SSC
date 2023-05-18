@@ -185,9 +185,9 @@ PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
 # Populate vectors for z, k [1/Mpc], and P(k,z) [Mpc^3]
 zlist = np.unique(PkFILE[:, 0])
 k_points = int(len(PkFILE[:, 2]) / len(zlist))
-klist = PkFILE[:k_points, 1] * cosmo.cosmo.params.h
+klist = PkFILE[:k_points, 1] * cosmo.cosmo_ccl.params.h
 z_points = len(zlist)
-Pklist = PkFILE[:, 3].reshape(z_points, k_points) / cosmo.cosmo.params.h ** 3
+Pklist = PkFILE[:, 3].reshape(z_points, k_points) / cosmo.cosmo_ccl.params.h ** 3
 
 # Create a Pk2D object
 a_arr = 1 / (1 + zlist[::-1])
