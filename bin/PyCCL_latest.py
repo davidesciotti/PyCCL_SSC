@@ -30,7 +30,6 @@ import ell_values as ell_utils
 sys.path.append(f'../../cl_v2/lib')
 import wf_cl_lib
 
-
 matplotlib.use('Qt5Agg')
 start_time = time.perf_counter()
 plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
@@ -129,6 +128,7 @@ with open('../../exact_SSC/config/config.yml') as f:
     cfg = yaml.safe_load(f)
 
 ell_grid_recipe = cfg['ell_grid_recipe']
+sky_area_deg2 = cfg['sky_area_deg2']
 probes = cfg['probes']
 which_NGs = cfg['which_NGs']
 save_covs = cfg['save_covs']
@@ -139,7 +139,13 @@ ell_max = cfg['ell_max']
 nbl = cfg['nbl']
 zbins = cfg['zbins']
 use_ray = cfg['use_ray']  # TODO finish this!
+z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
+f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 # ! settings
+
+# ======================================================================================================================
+# ======================================================================================================================
+
 
 # get number of redshift pairs
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
@@ -148,76 +154,32 @@ zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
 # functions
 cosmo = wf_cl_lib.instantiate_ISTFfid_PyCCL_cosmo_obj()
 
-################################## Define redshift distribution of sources kernels #####################################
-zmin, zmax, dz = 0.001, 2.5, 0.001
-z_grid = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
+# source redshift distribution, default ISTF values for bin edges & analytical prescription for the moment
+niz_unnormalized_arr = np.asarray(
+    [wf_cl_lib.niz_unnormalized_analytical(z_grid, zbin_idx) for zbin_idx in range(zbins)])
+niz_normalized_arr = wf_cl_lib.normalize_niz_simps(niz_unnormalized_arr, z_grid).T
+n_of_z = niz_normalized_arr
 
-# for CosmoLike
-# zmin, zmax, zsteps = 0.001, 4., 10_000
-# z_grid = np.linspace(zmin, zmax, zsteps)  # ! should it start from 0 instead?
+# galaxy bias
+galaxy_bias_2d_array = wf_cl_lib.build_galaxy_bias_2d_arr(bias_values=None, z_values=None, zbins=zbins,
+                                                          z_grid=z_grid, bias_model='step-wise',
+                                                          plot_bias=False)
 
-z_median = ISTF_fid.photoz_bins['z_median']
+# IA bias
+ia_bias_1d_array = wf_cl_lib.build_IA_bias_1d_arr(z_grid, lumin_ratio=None, cosmo=cosmo,
+                                                  A_IA=None, eta_IA=None, beta_IA=None, C_IA=None, growth_factor=None,
+                                                  Omega_m=None)
 
-# TODO import these from IST_fid
-zbins_edges = np.array([[zmin, 0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576],
-                        [0.418, 0.56, 0.678, 0.789, 0.9, 1.019, 1.155, 1.324, 1.576, zmax]])
-# assert (zbins == len(zbins_edges[0])), 'zbins and zbins_edges do not match'
+# # ! compute tracer objects
+wf_lensing = [ccl.tracers.WeakLensingTracer(cosmo, dndz=(z_grid, n_of_z[:, zbin_idx]),
+                                            ia_bias=(z_grid, ia_bias_1d_array), use_A_ia=False)
+              for zbin_idx in range(zbins)]
 
-# other useful parameters
-n_gal = ISTF_fid.other_survey_specs['n_gal']
-survey_area = ISTF_fid.other_survey_specs['survey_area']
-f_sky = survey_area * (np.pi / 180) ** 2 / (4 * np.pi)
-# n_gal_degsq = n_gal * (180 * 60 / np.pi) ** 2
-# sigma_e = ISTF_fid.other_survey_specs['sigma_eps']
+wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(z_grid, n_of_z[:, zbin_idx]),
+                                            bias=(z_grid, galaxy_bias_2d_array[:, zbin_idx]),
+                                            mag_bias=None)
+             for zbin_idx in range(zbins)]
 
-
-fout = ISTF_fid.photoz_pdf['f_out']
-cb, zb, sigmab = ISTF_fid.photoz_pdf['c_b'], ISTF_fid.photoz_pdf['z_b'], ISTF_fid.photoz_pdf['sigma_b']
-c0, z0, sigma0 = ISTF_fid.photoz_pdf['c_o'], ISTF_fid.photoz_pdf['z_o'], ISTF_fid.photoz_pdf['sigma_o']
-
-nzEuclid = n_gal * (z_grid / z_median * np.sqrt(2)) ** 2 * np.exp(-(z_grid / z_median * np.sqrt(2)) ** 1.5)
-
-nziEuclid = np.array([nzEuclid * 1 / 2 / c0 / cb * (cb * fout *
-                                                    (erf((z_grid - z0 - c0 * zbins_edges[0, iz]) / np.sqrt(2) /
-                                                         (1 + z_grid) / sigma0) -
-                                                     erf((z_grid - z0 - c0 * zbins_edges[1, iz]) / np.sqrt(2) /
-                                                         (1 + z_grid) / sigma0)) +
-                                                    c0 * (1 - fout) *
-                                                    (erf((z_grid - zb - cb * zbins_edges[0, iz]) / np.sqrt(2) /
-                                                         (1 + z_grid) / sigmab) -
-                                                     erf((z_grid - zb - cb * zbins_edges[1, iz]) / np.sqrt(2) /
-                                                         (1 + z_grid) / sigmab))) for iz in range(zbins)])
-
-# normalize nz: this should be the denominator of Eq. (112) of IST:f
-for i in range(zbins):
-    norm_factor = np.sum(nziEuclid[i, :]) * dz
-    nziEuclid[i, :] /= norm_factor
-
-
-    niz_unnormalized = np.asarray([wf_cl_lib.niz_unnormalized_analytical(z_grid, zbin_idx) for zbin_idx in range(zbins)])
-    niz_normalized_arr = wf_cl_lib.normalize_niz_simps(niz_unnormalized, z_grid).T
-nzi_v2 = wf_cl_lib.
-
-for zi in range(zbins):
-    plt.plot(z_grid, nziEuclid[zi, :], label=f'zbin {zi}')
-
-assert False
-
-# Intrinsic alignment and galaxy bias
-IAFILE = np.genfromtxt(project_path / 'input/scaledmeanlum-E2Sa.dat')
-FIAzNoCosmoNoGrowth = -1 * 1.72 * 0.0134 * (1 + IAFILE[:, 0]) ** (-0.41) * IAFILE[:, 1] ** 2.17
-FIAz = FIAzNoCosmoNoGrowth * (cosmo.cosmo.params.Omega_c + cosmo.cosmo.params.Omega_b) / ccl.growth_factor(cosmo, 1 / (
-        1 + IAFILE[:, 0]))
-
-b_array_v2 = wf_cl_lib.build_galaxy_bias_2d_arr(None, None, zbins, z_grid, 'step-wise', plot_bias=False)
-
-assert False
-
-# compute the kernels
-wil = [ccl.WeakLensingTracer(cosmo, dndz=(z_grid, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
-       for iz in range(zbins)]
-wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(z_grid, nziEuclid[iz]), bias=(z_grid, b_array),
-                                      mag_bias=None) for iz in range(zbins)]
 
 # Import fiducial P(k,z)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
@@ -237,15 +199,15 @@ Pk = ccl.Pk2D(a_arr=a_arr, lk_arr=lk_arr, pk_arr=Pklist, is_logp=False)
 
 # ! compute cls, just as a test
 ells_LL, _ = ell_utils.compute_ells(nbl=30, ell_min=10, ell_max=5000, recipe='ISTF')
-cl_LL = wf_cl_lib.cl_PyCCL(wil, wil, ells_LL, zbins, None, cosmo)
+cl_LL = wf_cl_lib.cl_PyCCL(wf_lensing, wf_lensing, ells_LL, zbins, None, cosmo)
 # TODO introduce one by one the ingredients from wf_cl_main/lib
 
 assert 1 > 2
 
 # === 3x2pt stuff ===
 probe_wf_dict = {
-    'L': wil,
-    'G': wig
+    'L': wf_lensing,
+    'G': wf_galaxy
 }
 probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
 probe_idx_dict = {'L': 0, 'G': 1}
@@ -359,10 +321,10 @@ for probe in probes:
 
         if probe == 'WL':
             ell_max = 5000
-            kernel = wil
+            kernel = wf_lensing
         elif probe == 'GC':
             ell_max = 3000
-            kernel = wig
+            kernel = wf_galaxy
         elif probe == '3x2pt':
             ell_max = 3000
         else:
