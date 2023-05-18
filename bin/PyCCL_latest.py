@@ -41,61 +41,41 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 ###############################################################################
 
 
-def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-    cov_SSC_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-    start_SSC_timer = time.perf_counter()
+def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, ng_function,
+                                integration_method='spline'):
+    cov_ng_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
+    start_time = time.perf_counter()
 
     for i in range(zbins):
         start = time.perf_counter()
         for j in range(zbins):
             for k in range(zbins):
                 for l in range(zbins):
-                    cov_SSC_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_SSC(cosmo, kernel_A[i], kernel_B[j],
-                                                                                      ell, tkka,
-                                                                                      sigma2_B=None, fsky=f_sky,
-                                                                                      cltracer3=kernel_C[k],
-                                                                                      cltracer4=kernel_D[l],
-                                                                                      ell2=None,
-                                                                                      integration_method=integration_method)
+                    cov_ng_6D[:, :, i, j, k, l] = ng_function(cosmo, kernel_A[i], kernel_B[j],
+                                                              ell, tkka,
+                                                              sigma2_B=None, fsky=f_sky,
+                                                              cltracer3=kernel_C[k],
+                                                              cltracer4=kernel_D[l],
+                                                              ell2=None,
+                                                              integration_method=integration_method)
         print(f'i-th redshift bins: {i}, computed in  {(time.perf_counter() - start):.2f} s')
-    print(f'SSC computed in  {(time.perf_counter() - start_SSC_timer):.2f} s')
+    print(f'SSC computed in  {(time.perf_counter() - start_time):.2f} s')
 
-    return cov_SSC_6D
-
-
-def compute_cNG_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
-    cov_cNG_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-    start_cNG_timer = time.perf_counter()
-
-    for i in range(zbins):
-        start = time.perf_counter()
-        for j in range(zbins):
-            for k in range(zbins):
-                for l in range(zbins):
-                    cov_cNG_6D[:, :, i, j, k, l] = ccl.covariances.angular_cl_cov_cNG(cosmo, kernel_A[i], kernel_B[j],
-                                                                                      ell=ell, tkka=tkka, fsky=f_sky,
-                                                                                      cltracer3=kernel_C[k],
-                                                                                      cltracer4=kernel_D[l],
-                                                                                      ell2=None,
-                                                                                      integration_method=integration_method)
-        print(f'i-th redshift bins: {i}, computed in  {(time.perf_counter() - start):.2f} s')
-    print(f'cNG computed in {(time.perf_counter() - start_cNG_timer):.2f} s')
-
-    return cov_cNG_6D
+    return cov_ng_6D
 
 
-def compute_3x2pt_PyCCL(PyCCL_func, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
+def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
                         probe_ordering, probe_combinations_3x2pt):
     # TODO finish this function
     cov_SSC_3x2pt_dict_10D = {}
     for A, B, C, D in probe_combinations_3x2pt:
         print('3x2pt: working on probe combination ', A, B, C, D)
-        cov_SSC_3x2pt_dict_10D[A, B, C, D] = PyCCL_func(cosmo,
-                                                        probe_wf_dict[A], probe_wf_dict[B],
-                                                        probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
-                                                        f_sky, integration_method)
+        cov_SSC_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
+                                                                         probe_wf_dict[A], probe_wf_dict[B],
+                                                                         probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
+                                                                         f_sky, ng_function, integration_method)
         np.save(
-            f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
+            f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_grid_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
             cov_SSC_3x2pt_dict_10D[A, B, C, D])
 
     # TODO test this by loading the cov_SSC_3x2pt_arr_10D from file (and then storing it into a dictionary)
@@ -139,6 +119,8 @@ ell_min = cfg['ell_min']
 ell_max = cfg['ell_max']
 nbl = cfg['nbl']
 zbins = cfg['zbins']
+triu_tril = cfg['triu_tril']
+row_col_major = cfg['row_col_major']
 use_ray = cfg['use_ray']  # TODO finish this!
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
@@ -150,9 +132,11 @@ f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 
 # get number of redshift pairs
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
+ind = mm.build_full_ind(triu_tril, row_col_major, zbins)
 
 # ! compute cls, just as a test
 ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
+np.savetxt(f'{project_path}/output/ell_values/ell_values.txt', ell_grid)
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -188,21 +172,6 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # cl_GL_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_lensing, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 # cl_GG_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_galaxy, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 
-# === 3x2pt stuff ===
-probe_wf_dict = {
-    'L': wf_lensing,
-    'G': wf_galaxy
-}
-probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
-probe_idx_dict = {'L': 0, 'G': 1}
-# upper diagonal of blocks of the covariance matrix
-probe_combinations_3x2pt = (
-    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[0][0], probe_ordering[0][1]),
-    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[1][0], probe_ordering[1][1]),
-    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[2][0], probe_ordering[2][1]),
-    (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[1][0], probe_ordering[1][1]),
-    (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[2][0], probe_ordering[2][1]),
-    (probe_ordering[2][0], probe_ordering[2][1], probe_ordering[2][0], probe_ordering[2][1]))
 
 # ! =============================================== halo model =========================================================
 # notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
@@ -210,13 +179,10 @@ probe_combinations_3x2pt = (
 
 # TODO we're not sure about the values of Delta and rho_type
 # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
-
 # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
 
 # HALO MODEL PRESCRIPTIONS:
-# KiDS1000 Methodology:
-# https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
-
+# KiDS1000 Methodology: https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
 # Krause2017: https://arxiv.org/pdf/1601.05779.pdf
 # about the mass definition, the paper says:
 # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
@@ -273,8 +239,6 @@ print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halo
 #     compute_cNG_PyCCL = compute_cNG_PyCCL_ray.remote
 
 
-assert 1 > 2
-
 integration_method_dict = {
     'WL': {
         'SSC': 'spline',
@@ -290,6 +254,21 @@ integration_method_dict = {
     }
 }
 
+probe_wf_dict = {
+    'L': wf_lensing,
+    'G': wf_galaxy
+}
+probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
+probe_idx_dict = {'L': 0, 'G': 1}
+# upper diagonal of blocks of the covariance matrix
+probe_combinations_3x2pt = (
+    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[0][0], probe_ordering[0][1]),
+    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[1][0], probe_ordering[1][1]),
+    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[2][0], probe_ordering[2][1]),
+    (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[1][0], probe_ordering[1][1]),
+    (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[2][0], probe_ordering[2][1]),
+    (probe_ordering[2][0], probe_ordering[2][1], probe_ordering[2][0], probe_ordering[2][1]))
+
 for probe in probes:
     for which_NG in which_NGs:
 
@@ -297,27 +276,13 @@ for probe in probes:
         assert which_NG in ['SSC', 'cNG'], 'which_NG must be either SSC or cNG'
         assert ell_grid_recipe in ['ISTF', 'ISTNL'], 'ell_grid_recipe must be either ISTF or ISTNL'
 
-        # === ell values ===
-        if ell_grid_recipe == 'ISTF' and nbl != 30:
-            print('Warning: ISTF uses 30 ell bins')
-        elif ell_grid_recipe == 'ISTNL' and nbl != 20:
+        if ell_grid_recipe == 'ISTNL' and nbl != 20:
             print('Warning: ISTNL uses 20 ell bins')
 
         if probe == 'WL':
-            ell_max = 5000
             kernel = wf_lensing
         elif probe == 'GC':
-            ell_max = 3000
             kernel = wf_galaxy
-        elif probe == '3x2pt':
-            ell_max = 3000
-        else:
-            raise ValueError('probe must be "WL", "GC" or "3x2pt"')
-
-        ell, delta_ell = compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
-
-        np.savetxt(f'{project_path}/output/ell_values/ell_values_{probe}.txt', ell)
-        np.savetxt(f'{project_path}/output/ell_values/delta_ell_values_{probe}.txt', delta_ell)
 
         # just a check on the settings
         print(f'\n****************** settings ****************'
@@ -332,26 +297,32 @@ for probe in probes:
         # ! =============================================== compute covs ===============================================
 
         if which_NG == 'SSC':
-            PyCCL_whichNG_funct = compute_SSC_PyCCL
+            ng_function = ccl.covariances.angular_cl_cov_SSC
         elif which_NG == 'cNG':
-            PyCCL_whichNG_funct = compute_cNG_PyCCL
+            ng_function = ccl.covariances.angular_cl_cov_cNG
+        else:
+            raise ValueError('which_NG must be either SSC or cNG')
 
         if probe in ['WL', 'GC']:
-            cov_6D = PyCCL_whichNG_funct(cosmo_ccl, kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
-                                         ell=ell, tkka=tkka, f_sky=f_sky,
-                                         integration_method=integration_method_dict[probe][which_NG])
+            cov_6D = compute_nongaussian_cov_ccl(cosmo_ccl,
+                                                 kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
+                                                 ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
+                                                 integration_method=integration_method_dict[probe][which_NG])
         elif probe == '3x2pt':
-            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(PyCCL_whichNG_funct, cosmo_ccl, probe_wf_dict, ell, tkka, f_sky,
+            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, probe_wf_dict, ell_grid, tkka,
+                                                     f_sky,
                                                      'qag_quad',
                                                      probe_ordering, probe_combinations_3x2pt)
 
             # stack everything and reshape to 4D
             cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
                                                        GL_or_LG)
+        else:
+            raise ValueError('probe must be either WL, GC, or 3x2pt')
 
         if save_covs:
 
-            filename = f'{project_path}/output/covmat/cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ells{ell_grid_recipe}' \
+            filename = f'{project_path}/output/covmat/after_script_update/cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ells{ell_grid_recipe}' \
                        f'_ellmax{ell_max}_hm_recipe{hm_recipe}'
 
             if probe in ['WL', 'GC']:
