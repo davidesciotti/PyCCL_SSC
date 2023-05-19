@@ -10,6 +10,7 @@ import pyccl as ccl
 import yaml
 from scipy.special import erf
 import ray
+from tqdm import tqdm
 
 ray.shutdown()
 ray.init()
@@ -36,32 +37,43 @@ start_time = time.perf_counter()
 plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 
 
-###############################################################################
-###############################################################################
-###############################################################################
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
 
 
 def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, ng_function,
                                 integration_method='spline'):
-    cov_ng_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-    start_time = time.perf_counter()
+    cov_ng = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
 
-    for i in range(zbins):
-        start = time.perf_counter()
-        for j in range(zbins):
-            for k in range(zbins):
-                for l in range(zbins):
-                    cov_ng_6D[:, :, i, j, k, l] = ng_function(cosmo, kernel_A[i], kernel_B[j],
-                                                              ell, tkka,
-                                                              sigma2_B=None, fsky=f_sky,
-                                                              cltracer3=kernel_C[k],
-                                                              cltracer4=kernel_D[l],
-                                                              ell2=None,
-                                                              integration_method=integration_method)
-        print(f'i-th redshift bins: {i}, computed in  {(time.perf_counter() - start):.2f} s')
-    print(f'SSC computed in  {(time.perf_counter() - start_time):.2f} s')
+    if not optimize:
+        for i in tqdm(range(zbins)):
+            for j in range(zbins):
+                for k in range(zbins):
+                    for l in range(zbins):
+                        cov_ng[:, :, i, j, k, l] = ng_function(cosmo, kernel_A[i], kernel_B[j],
+                                                               ell, tkka,
+                                                               sigma2_B=None, fsky=f_sky,
+                                                               cltracer3=kernel_C[k],
+                                                               cltracer4=kernel_D[l],
+                                                               ell2=None,
+                                                               integration_method=integration_method)
 
-    return cov_ng_6D
+    elif optimize:
+        cov_ng = np.zeros((nbl, nbl, zpairs, zpairs))
+        for ij in tqdm(range(zpairs)):
+            for kl in range(zpairs):
+                i, j, k, l = ind[ij, -2], ind[ij, -1], ind[kl, -2], ind[kl, -1]
+
+                cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
+                                                   ell, tkka,
+                                                   sigma2_B=None, fsky=f_sky,
+                                                   cltracer3=kernel_C[k],
+                                                   cltracer4=kernel_D[l],
+                                                   ell2=None,
+                                                   integration_method=integration_method)
+
+    return cov_ng
 
 
 def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
@@ -91,11 +103,13 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, int
     return cov_SSC_3x2pt_dict_10D
 
 
-compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
-compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
-###############################################################################
-###############################################################################
-###############################################################################
+# compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
+# compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
+
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+
 
 # ! POTENTIAL ISSUES:
 # 1. input files (WF, ell, a, pk...)
@@ -128,11 +142,13 @@ f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 
 # ======================================================================================================================
 # ======================================================================================================================
+# ======================================================================================================================
 
 
 # get number of redshift pairs
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
 ind = mm.build_full_ind(triu_tril, row_col_major, zbins)
+ind_auto = ind[:zpairs_auto, :]
 
 # ! compute cls, just as a test
 ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
@@ -304,11 +320,16 @@ for probe in probes:
             raise ValueError('which_NG must be either SSC or cNG')
 
         if probe in ['WL', 'GC']:
-            cov_6D = compute_nongaussian_cov_ccl(cosmo_ccl,
+            optimize = True
+            cov_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
                                                  kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
                                                  ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
                                                  integration_method=integration_method_dict[probe][which_NG])
+
+            cov_4D_non_optimized = mm.cov_6D_to_4D(cov_6D, nbl, zpairs_auto, ind_auto)
+
         elif probe == '3x2pt':
+            optimize = False
             cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, probe_wf_dict, ell_grid, tkka,
                                                      f_sky,
                                                      'qag_quad',
@@ -327,6 +348,7 @@ for probe in probes:
 
             if probe in ['WL', 'GC']:
                 np.save(f'{filename}_6D.npy', cov_6D)
+                np.save(f'{filename}_6D.npy', cov_4D)
 
             elif probe == '3x2pt':
                 # save both as dict and as 4D npy array
