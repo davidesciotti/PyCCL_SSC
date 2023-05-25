@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyccl as ccl
 import yaml
+from joblib import Parallel, delayed
 from scipy.special import erf
 import ray
 from tqdm import tqdm
@@ -43,10 +44,46 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 
 
 def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, ng_function,
-                                integration_method='spline'):
-    cov_ng = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
+                                ind_AB=None, ind_CD=None, integration_method='spline', optimize=True):
+    if optimize:
 
-    if not optimize:
+        assert ind_AB is not None, 'ind_AB must be passed'
+        assert ind_CD is not None, 'ind_CD must be passed'
+
+        zpairs_AB = ind_AB.shape[0]
+        zpairs_CD = ind_CD.shape[0]
+
+        cov_ng = np.zeros((nbl, nbl, zpairs_AB, zpairs_CD))
+
+        # for ij in tqdm(range(zpairs_AB)):
+        #     for kl in range(zpairs_CD):
+        #         i, j, k, l = ind_AB[ij, -2], ind_AB[ij, -1], ind_CD[kl, -2], ind_CD[kl, -1]
+        #
+        #         cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
+        #                                            ell, tkka,
+        #                                            sigma2_B=None, fsky=f_sky,
+        #                                            cltracer3=kernel_C[k],
+        #                                            cltracer4=kernel_D[l],
+        #                                            ell2=None,
+        #                                            integration_method=integration_method)
+
+        # parallel version:
+        cov_ng = Parallel(n_jobs=-1)(delayed(ng_function)(cosmo,
+                                                          kernel_A[ind_AB[ij, -2]],
+                                                          kernel_B[ind_AB[ij, -1]],
+                                                          ell, tkka,
+                                                          sigma2_B=None, fsky=f_sky,
+                                                          cltracer3=kernel_C[ind_CD[kl, -2]],
+                                                          cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                          ell2=None,
+                                                          integration_method=integration_method)
+                                     for kl in range(zpairs_CD)
+                                     for ij in tqdm(range(zpairs_AB)))
+
+
+
+    elif not optimize:
+        cov_ng = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
         for i in tqdm(range(zbins)):
             for j in range(zbins):
                 for k in range(zbins):
@@ -58,20 +95,8 @@ def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, e
                                                                cltracer4=kernel_D[l],
                                                                ell2=None,
                                                                integration_method=integration_method)
-
-    elif optimize:
-        cov_ng = np.zeros((nbl, nbl, zpairs, zpairs))
-        for ij in tqdm(range(zpairs)):
-            for kl in range(zpairs):
-                i, j, k, l = ind[ij, -2], ind[ij, -1], ind[kl, -2], ind[kl, -1]
-
-                cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
-                                                   ell, tkka,
-                                                   sigma2_B=None, fsky=f_sky,
-                                                   cltracer3=kernel_C[k],
-                                                   cltracer4=kernel_D[l],
-                                                   ell2=None,
-                                                   integration_method=integration_method)
+    else:
+        raise ValueError('optimize must be either True or False')
 
     return cov_ng
 
@@ -138,6 +163,7 @@ row_col_major = cfg['row_col_major']
 use_ray = cfg['use_ray']  # TODO finish this!
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
+n_samples_wf = cfg['n_samples_wf']
 # ! settings
 
 # ======================================================================================================================
@@ -149,6 +175,7 @@ f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
 ind = mm.build_full_ind(triu_tril, row_col_major, zbins)
 ind_auto = ind[:zpairs_auto, :]
+ind_cross = ind[zpairs_auto:zpairs_auto + zpairs_cross, :]
 
 # ! compute cls, just as a test
 ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
@@ -176,12 +203,12 @@ ia_bias_1d_array = wf_cl_lib.build_IA_bias_1d_arr(z_grid, input_lumin_ratio=None
 
 # # ! compute tracer objects
 wf_lensing = [ccl.tracers.WeakLensingTracer(cosmo_ccl, dndz=(z_grid, n_of_z[:, zbin_idx]),
-                                            ia_bias=(z_grid, ia_bias_1d_array), use_A_ia=False)
+                                            ia_bias=(z_grid, ia_bias_1d_array), use_A_ia=False, n_samples=n_samples_wf)
               for zbin_idx in range(zbins)]
 
 wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_grid, n_of_z[:, zbin_idx]),
                                             bias=(z_grid, galaxy_bias_2d_array[:, zbin_idx]),
-                                            mag_bias=None)
+                                            mag_bias=None, n_samples=n_samples_wf)
              for zbin_idx in range(zbins)]
 
 # cl_LL_3D = wf_cl_lib.cl_PyCCL(wf_lensing, wf_lensing, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
@@ -256,11 +283,11 @@ print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halo
 
 
 integration_method_dict = {
-    'WL': {
+    'LL': {
         'SSC': 'spline',
         'cNG': 'spline',
     },
-    'GC': {
+    'GG': {
         'SSC': 'qag_quad',
         'cNG': 'qag_quad',
     },
@@ -274,6 +301,10 @@ probe_wf_dict = {
     'L': wf_lensing,
     'G': wf_galaxy
 }
+
+# TODO it should be
+# probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
+
 probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
 probe_idx_dict = {'L': 0, 'G': 1}
 # upper diagonal of blocks of the covariance matrix
@@ -288,16 +319,16 @@ probe_combinations_3x2pt = (
 for probe in probes:
     for which_NG in which_NGs:
 
-        assert probe in ['WL', 'GC', '3x2pt'], 'probe must be either WL, GC, or 3x2pt'
+        assert probe in ['LL', 'GG', '3x2pt'], 'probe must be either LL, GG, or 3x2pt'
         assert which_NG in ['SSC', 'cNG'], 'which_NG must be either SSC or cNG'
         assert ell_grid_recipe in ['ISTF', 'ISTNL'], 'ell_grid_recipe must be either ISTF or ISTNL'
 
         if ell_grid_recipe == 'ISTNL' and nbl != 20:
             print('Warning: ISTNL uses 20 ell bins')
 
-        if probe == 'WL':
+        if probe == 'LL':
             kernel = wf_lensing
-        elif probe == 'GC':
+        elif probe == 'GG':
             kernel = wf_galaxy
 
         # just a check on the settings
@@ -319,36 +350,54 @@ for probe in probes:
         else:
             raise ValueError('which_NG must be either SSC or cNG')
 
-        if probe in ['WL', 'GC']:
-            optimize = True
-            cov_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
-                                                 kernel_A=kernel, kernel_B=kernel, kernel_C=kernel, kernel_D=kernel,
-                                                 ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
-                                                 integration_method=integration_method_dict[probe][which_NG])
+        ind_dict = {
+            'L': ind_auto,
+            'G': ind_cross
+        }
 
-            cov_4D_non_optimized = mm.cov_6D_to_4D(cov_6D, nbl, zpairs_auto, ind_auto)
+        kernel_dict = {
+            'L': wf_lensing,
+            'G': wf_galaxy
+        }
+
+        if probe in ['LL', 'GG']:
+            assert probe[0] == probe[1], 'probe must be either LL or GG'
+
+            kernel_A = kernel_dict[probe[0]]
+            kernel_B = kernel_dict[probe[0]]
+            kernel_C = kernel_dict[probe[0]]
+            kernel_D = kernel_dict[probe[0]]
+            ind_AB = ind_dict[probe[0]]
+            ind_CD = ind_dict[probe[0]]
+
+            cov_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
+                                                 kernel_A=kernel_A, kernel_B=kernel_B, kernel_C=kernel_C, kernel_D=kernel_D,
+                                                 ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
+                                                 integration_method=integration_method_dict[probe][which_NG],
+                                                 ind_AB=ind_AB, ind_CD=ind_CD)
+
+            cov_6D = mm.cov_4D_to_6D(cov_4D, nbl, zbins, 'LL', ind)
 
         elif probe == '3x2pt':
             optimize = False
             cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, probe_wf_dict, ell_grid, tkka,
-                                                     f_sky,
-                                                     'qag_quad',
+                                                     f_sky, 'qag_quad',
                                                      probe_ordering, probe_combinations_3x2pt)
 
             # stack everything and reshape to 4D
             cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
                                                        GL_or_LG)
         else:
-            raise ValueError('probe must be either WL, GC, or 3x2pt')
+            raise ValueError('probe must be either LL, GG, or 3x2pt')
 
         if save_covs:
 
-            filename = f'{project_path}/output/covmat/after_script_update/cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ells{ell_grid_recipe}' \
-                       f'_ellmax{ell_max}_hm_recipe{hm_recipe}'
+            filename = f'{project_path}/output/covmat/after_script_update/cov_PyCCL_{which_NG}_{probe}_nbl{nbl}' \
+                       f'_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
-            if probe in ['WL', 'GC']:
+            if probe in ['LL', 'GG']:
                 np.save(f'{filename}_6D.npy', cov_6D)
-                np.save(f'{filename}_6D.npy', cov_4D)
+                np.save(f'{filename}_4D.npy', cov_4D)
 
             elif probe == '3x2pt':
                 # save both as dict and as 4D npy array
@@ -356,6 +405,8 @@ for probe in probes:
                     pickle.dump(cov_3x2pt_dict_10D, handle)
 
                 np.save(f'{filename}_4D.npy', cov_3x2pt_4D)
+
+mm.test_folder_content()
 
 assert 1 > 2, 'stop here'
 
