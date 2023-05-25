@@ -428,6 +428,7 @@ for probe in probes:
             cov_3x2pt_dict_10D_v2 = compute_3x2pt_PyCCL_v2(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka, f_sky,
                                                            'qag_quad', probe_ordering, ind_dict, output_4D_array=False)
             # TODO finish this comparison and refactoring/parallelization of the auto covariance
+            # TODO finish testing simmetry in ell1, ell2?? Already done a million times...
             for key in cov_3x2pt_dict_10D_v2.keys():
                 np.testing.assert_allclose(cov_3x2pt_dict_10D_v2[key], cov_3x2pt_dict_10D[key], atol=0, rtol=1e-8)
 
@@ -439,12 +440,13 @@ for probe in probes:
 
         if save_covs:
 
-            filename = f'{project_path}/output/covmat/after_script_update/cov_PyCCL_{which_NG}_{probe}_nbl{nbl}' \
+            output_folder = f'{project_path}/output/covmat/after_script_update'
+            filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}' \
                        f'_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
             if probe in ['LL', 'GG']:
-                np.save(f'{filename}_6D.npy', cov_6D)
-                np.save(f'{filename}_4D.npy', cov_4D)
+                np.save(f'{output_folder}/{filename}_6D.npy', cov_6D)
+                np.save(f'{output_folder}/{filename}_4D.npy', cov_4D)
 
             elif probe == '3x2pt':
                 # save both as dict and as 4D npy array
@@ -453,7 +455,7 @@ for probe in probes:
 
                 np.save(f'{filename}_4D.npy', cov_3x2pt_4D)
 
-mm.test_folder_content()
+            mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
 assert 1 > 2, 'stop here'
 
