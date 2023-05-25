@@ -1,3 +1,4 @@
+import pdb
 import pickle
 import sys
 import time
@@ -43,6 +44,65 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 # ======================================================================================================================
 
 
+def initialize_trispectrum():
+    # ! =============================================== halo model =========================================================
+    # TODO we're not sure about the values of Delta and rho_type
+    # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
+    # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
+
+    # HALO MODEL PRESCRIPTIONS:
+    # KiDS1000 Methodology: https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
+    # Krause2017: https://arxiv.org/pdf/1601.05779.pdf
+    # about the mass definition, the paper says:
+    # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
+    halomod_start_time = time.perf_counter()
+    # mass definition
+    if hm_recipe == 'KiDS1000':  # arXiv:2007.01844
+        c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
+        mass_def = ccl.halos.MassDef200m(c_m=c_m)
+        c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
+    elif hm_recipe == 'Krause2017':  # arXiv:1601.05779
+        c_m = 'Bhattacharya13'  # see paper, after Eq. 1
+        mass_def = ccl.halos.MassDef200m(c_m=c_m)
+        c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
+    else:
+        raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
+
+    # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
+
+    # mass function
+    massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
+
+    # halo bias
+    hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
+
+    # concentration-mass relation
+
+    # TODO understand better this object. We're calling the abstract class, is this ok?
+    # HMCalculator
+    hmc = ccl.halos.halo_model.HMCalculator(cosmo_ccl, massfunc, hbias, mass_def=mass_def,
+                                            log10M_min=8.0, log10M_max=16.0, nlog10M=128,
+                                            integration_method_M='simpson', k_min=1e-05)
+
+    # halo profile
+    halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
+                                                     fourier_analytic=True, projected_analytic=False,
+                                                     cumul2d_analytic=False, truncated=True)
+
+    # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
+    # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
+    # 🐛 bug fixed: normprof shoud be True
+    # 🐛 bug fixed?: p_of_k_a=None instead of Pk
+    tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
+                                                 prof1=halo_profile, prof2=None, prof12_2pt=None,
+                                                 prof3=None, prof4=None, prof34_2pt=None,
+                                                 normprof1=True, normprof2=True, normprof3=True, normprof4=True,
+                                                 p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
+                                                 extrap_order_hik=1, use_log=False)
+    print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
+    return tkka
+
+
 def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, ng_function,
                                 ind_AB=None, ind_CD=None, integration_method='spline', optimize=True):
     if optimize:
@@ -53,32 +113,46 @@ def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, e
         zpairs_AB = ind_AB.shape[0]
         zpairs_CD = ind_CD.shape[0]
 
+        start_time = time.perf_counter()
         cov_ng = np.zeros((nbl, nbl, zpairs_AB, zpairs_CD))
+        for ij in tqdm(range(zpairs_AB)):
+            for kl in range(zpairs_CD):
+                i, j, k, l = ind_AB[ij, -2], ind_AB[ij, -1], ind_CD[kl, -2], ind_CD[kl, -1]
 
-        # for ij in tqdm(range(zpairs_AB)):
-        #     for kl in range(zpairs_CD):
-        #         i, j, k, l = ind_AB[ij, -2], ind_AB[ij, -1], ind_CD[kl, -2], ind_CD[kl, -1]
-        #
-        #         cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
-        #                                            ell, tkka,
-        #                                            sigma2_B=None, fsky=f_sky,
-        #                                            cltracer3=kernel_C[k],
-        #                                            cltracer4=kernel_D[l],
-        #                                            ell2=None,
-        #                                            integration_method=integration_method)
+                cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
+                                                   ell, tkka,
+                                                   sigma2_B=None, fsky=f_sky,
+                                                   cltracer3=kernel_C[k],
+                                                   cltracer4=kernel_D[l],
+                                                   ell2=None,
+                                                   integration_method=integration_method)
+        print(f'serial version took {time.perf_counter() - start_time} seconds')
 
         # parallel version:
-        cov_ng = Parallel(n_jobs=-1)(delayed(ng_function)(cosmo,
-                                                          kernel_A[ind_AB[ij, -2]],
-                                                          kernel_B[ind_AB[ij, -1]],
-                                                          ell, tkka,
-                                                          sigma2_B=None, fsky=f_sky,
-                                                          cltracer3=kernel_C[ind_CD[kl, -2]],
-                                                          cltracer4=kernel_D[ind_CD[kl, -1]],
-                                                          ell2=None,
-                                                          integration_method=integration_method)
-                                     for kl in range(zpairs_CD)
-                                     for ij in tqdm(range(zpairs_AB)))
+        start_time = time.perf_counter()
+        cov_ng_parallel = Parallel(
+            n_jobs=-1, backend='threading')(delayed(ng_function)(cosmo,
+                                                                 kernel_A[ind_AB[ij, -2]],
+                                                                 kernel_B[ind_AB[ij, -1]],
+                                                                 ell, tkka,
+                                                                 sigma2_B=None, fsky=f_sky,
+                                                                 cltracer3=kernel_C[ind_CD[kl, -2]],
+                                                                 cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                                 ell2=None,
+                                                                 integration_method=integration_method)
+                                            for kl in range(zpairs_CD)
+                                            for ij in tqdm(range(zpairs_AB)))
+        print(f'parallel version took {time.perf_counter() - start_time} seconds')
+
+        cov_ng_parallel = np.array(cov_ng_parallel).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
+
+        np.testing.assert_allclose(cov_ng_parallel, cov_ng, atol=0, rtol=1e-8)
+
+        cov_ng_2D = mm.cov_4D_to_2D(cov_ng, block_index='vincenzo', optimize=True)
+        cov_ng_parallel_2D = mm.cov_4D_to_2D(cov_ng_parallel, block_index='vincenzo', optimize=True)
+
+        mm.compare_arrays(cov_ng_2D, cov_ng_parallel_2D, plot_array=True, log_array=True, plot_diff=True)
+
 
 
 
@@ -126,6 +200,25 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, int
     cov_SSC_3x2pt_dict_10D[GG + GL] = cov_SSC_3x2pt_dict_10D[GL + GG][...]
 
     return cov_SSC_3x2pt_dict_10D
+
+
+def compute_3x2pt_PyCCL_v2(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integration_method,
+                           probe_ordering, ind_dict, output_4D_array=True):
+    cov_ng_3x2pt_dict_10D = {}
+    for A, B in probe_ordering:
+        for C, D in probe_ordering:
+            print('3x2pt: working on probe combination ', A, B, C, D)
+            cov_ng_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
+                                                                            kernel_dict[A], kernel_dict[B],
+                                                                            kernel_dict[C], kernel_dict[D],
+                                                                            ell, tkka, f_sky, ng_function,
+                                                                            ind_AB=ind_dict[A + B],
+                                                                            ind_CD=ind_dict[C + D],
+                                                                            integration_method=integration_method)
+    if output_4D_array:
+        return mm.cov_3x2pt_10D_to_4D(cov_ng_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind.copy(), GL_or_LG)
+
+    return cov_ng_3x2pt_dict_10D
 
 
 # compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
@@ -177,6 +270,8 @@ ind = mm.build_full_ind(triu_tril, row_col_major, zbins)
 ind_auto = ind[:zpairs_auto, :]
 ind_cross = ind[zpairs_auto:zpairs_auto + zpairs_cross, :]
 
+assert GL_or_LG == 'GL', 'you should update ind_cross (used in ind_dict) for GL, but we work with GL...'
+
 # ! compute cls, just as a test
 ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
 np.savetxt(f'{project_path}/output/ell_values/ell_values.txt', ell_grid)
@@ -216,65 +311,10 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # cl_GG_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_galaxy, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 
 
-# ! =============================================== halo model =========================================================
 # notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
 
-# TODO we're not sure about the values of Delta and rho_type
-# mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
-# from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
-
-# HALO MODEL PRESCRIPTIONS:
-# KiDS1000 Methodology: https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
-# Krause2017: https://arxiv.org/pdf/1601.05779.pdf
-# about the mass definition, the paper says:
-# "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
-
-halomod_start_time = time.perf_counter()
-# mass definition
-if hm_recipe == 'KiDS1000':  # arXiv:2007.01844
-    c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
-    mass_def = ccl.halos.MassDef200m(c_m=c_m)
-    c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
-elif hm_recipe == 'Krause2017':  # arXiv:1601.05779
-    c_m = 'Bhattacharya13'  # see paper, after Eq. 1
-    mass_def = ccl.halos.MassDef200m(c_m=c_m)
-    c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
-else:
-    raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
-
-# TODO pass mass_def object? plus, understand what exactly is mass_def_strict
-
-# mass function
-massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
-
-# halo bias
-hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
-
-# concentration-mass relation
-
-# TODO understand better this object. We're calling the abstract class, is this ok?
-# HMCalculator
-hmc = ccl.halos.halo_model.HMCalculator(cosmo_ccl, massfunc, hbias, mass_def=mass_def,
-                                        log10M_min=8.0, log10M_max=16.0, nlog10M=128,
-                                        integration_method_M='simpson', k_min=1e-05)
-
-# halo profile
-halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
-                                                 fourier_analytic=True, projected_analytic=False,
-                                                 cumul2d_analytic=False, truncated=True)
-
-# it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
-# https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
-# 🐛 bug fixed: normprof shoud be True
-# 🐛 bug fixed?: p_of_k_a=None instead of Pk
-tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
-                                             prof1=halo_profile, prof2=None, prof12_2pt=None,
-                                             prof3=None, prof4=None, prof34_2pt=None,
-                                             normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                             p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
-                                             extrap_order_hik=1, use_log=False)
-print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
+tkka = initialize_trispectrum()
 
 # re-define the functions if using ray
 # if use_ray:
@@ -297,16 +337,11 @@ integration_method_dict = {
     }
 }
 
-probe_wf_dict = {
-    'L': wf_lensing,
-    'G': wf_galaxy
-}
+# TODO it should be:
+probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 
-# TODO it should be
-# probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
+# probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
 
-probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
-probe_idx_dict = {'L': 0, 'G': 1}
 # upper diagonal of blocks of the covariance matrix
 probe_combinations_3x2pt = (
     (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[0][0], probe_ordering[0][1]),
@@ -315,6 +350,23 @@ probe_combinations_3x2pt = (
     (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[1][0], probe_ordering[1][1]),
     (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[2][0], probe_ordering[2][1]),
     (probe_ordering[2][0], probe_ordering[2][1], probe_ordering[2][0], probe_ordering[2][1]))
+
+# convenience dictionaries
+ind_dict = {
+    'LL': ind_auto,
+    'GG': ind_auto,
+    'GL': ind_cross
+}
+
+probe_idx_dict = {
+    'L': 0,
+    'G': 1
+}
+
+kernel_dict = {
+    'L': wf_lensing,
+    'G': wf_galaxy
+}
 
 for probe in probes:
     for which_NG in which_NGs:
@@ -350,16 +402,6 @@ for probe in probes:
         else:
             raise ValueError('which_NG must be either SSC or cNG')
 
-        ind_dict = {
-            'L': ind_auto,
-            'G': ind_cross
-        }
-
-        kernel_dict = {
-            'L': wf_lensing,
-            'G': wf_galaxy
-        }
-
         if probe in ['LL', 'GG']:
             assert probe[0] == probe[1], 'probe must be either LL or GG'
 
@@ -367,11 +409,12 @@ for probe in probes:
             kernel_B = kernel_dict[probe[0]]
             kernel_C = kernel_dict[probe[0]]
             kernel_D = kernel_dict[probe[0]]
-            ind_AB = ind_dict[probe[0]]
-            ind_CD = ind_dict[probe[0]]
+            ind_AB = ind_dict[probe[0] + probe[1]]
+            ind_CD = ind_dict[probe[0] + probe[1]]
 
             cov_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
-                                                 kernel_A=kernel_A, kernel_B=kernel_B, kernel_C=kernel_C, kernel_D=kernel_D,
+                                                 kernel_A=kernel_A, kernel_B=kernel_B, kernel_C=kernel_C,
+                                                 kernel_D=kernel_D,
                                                  ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
                                                  integration_method=integration_method_dict[probe][which_NG],
                                                  ind_AB=ind_AB, ind_CD=ind_CD)
@@ -379,10 +422,14 @@ for probe in probes:
             cov_6D = mm.cov_4D_to_6D(cov_4D, nbl, zbins, 'LL', ind)
 
         elif probe == '3x2pt':
-            optimize = False
-            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, probe_wf_dict, ell_grid, tkka,
+            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka,
                                                      f_sky, 'qag_quad',
                                                      probe_ordering, probe_combinations_3x2pt)
+            cov_3x2pt_dict_10D_v2 = compute_3x2pt_PyCCL_v2(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka, f_sky,
+                                                           'qag_quad', probe_ordering, ind_dict, output_4D_array=False)
+            # TODO finish this comparison and refactoring/parallelization of the auto covariance
+            for key in cov_3x2pt_dict_10D_v2.keys():
+                np.testing.assert_allclose(cov_3x2pt_dict_10D_v2[key], cov_3x2pt_dict_10D[key], atol=0, rtol=1e-8)
 
             # stack everything and reshape to 4D
             cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
