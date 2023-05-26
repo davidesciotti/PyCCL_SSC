@@ -113,20 +113,20 @@ def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, e
         zpairs_AB = ind_AB.shape[0]
         zpairs_CD = ind_CD.shape[0]
 
-        start_time = time.perf_counter()
-        cov_ng = np.zeros((nbl, nbl, zpairs_AB, zpairs_CD))
-        for ij in tqdm(range(zpairs_AB)):
-            for kl in range(zpairs_CD):
-                i, j, k, l = ind_AB[ij, -2], ind_AB[ij, -1], ind_CD[kl, -2], ind_CD[kl, -1]
-
-                cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
-                                                   ell, tkka,
-                                                   sigma2_B=None, fsky=f_sky,
-                                                   cltracer3=kernel_C[k],
-                                                   cltracer4=kernel_D[l],
-                                                   ell2=None,
-                                                   integration_method=integration_method)
-        print(f'serial version took {time.perf_counter() - start_time} seconds')
+        # start_time = time.perf_counter()
+        # cov_ng = np.zeros((nbl, nbl, zpairs_AB, zpairs_CD))
+        # for ij in tqdm(range(zpairs_AB)):
+        #     for kl in range(zpairs_CD):
+        #         i, j, k, l = ind_AB[ij, -2], ind_AB[ij, -1], ind_CD[kl, -2], ind_CD[kl, -1]
+        #
+        #         cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
+        #                                            ell, tkka,
+        #                                            sigma2_B=None, fsky=f_sky,
+        #                                            cltracer3=kernel_C[k],
+        #                                            cltracer4=kernel_D[l],
+        #                                            ell2=None,
+        #                                            integration_method=integration_method)
+        # print(f'serial version took {time.perf_counter() - start_time} seconds')
 
         # parallel version:
         start_time = time.perf_counter()
@@ -143,17 +143,6 @@ def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, e
                                             for kl in range(zpairs_CD)
                                             for ij in tqdm(range(zpairs_AB)))
         print(f'parallel version took {time.perf_counter() - start_time} seconds')
-
-        cov_ng_parallel = np.array(cov_ng_parallel).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
-
-        np.testing.assert_allclose(cov_ng_parallel, cov_ng, atol=0, rtol=1e-8)
-
-        cov_ng_2D = mm.cov_4D_to_2D(cov_ng, block_index='vincenzo', optimize=True)
-        cov_ng_parallel_2D = mm.cov_4D_to_2D(cov_ng_parallel, block_index='vincenzo', optimize=True)
-
-        mm.compare_arrays(cov_ng_2D, cov_ng_parallel_2D, plot_array=True, log_array=True, plot_diff=True)
-
-
 
 
     elif not optimize:
