@@ -104,91 +104,56 @@ def initialize_trispectrum():
 
 
 def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, ng_function,
-                                ind_AB=None, ind_CD=None, integration_method='spline', optimize=True):
-    if optimize:
+                                ind_AB, ind_CD, integration_method='spline'):
+    zpairs_AB = ind_AB.shape[0]
+    zpairs_CD = ind_CD.shape[0]
 
-        assert ind_AB is not None, 'ind_AB must be passed'
-        assert ind_CD is not None, 'ind_CD must be passed'
+    # parallel version:
+    start_time = time.perf_counter()
+    cov_ng = Parallel(
+        n_jobs=-1, backend='threading')(delayed(ng_function)(cosmo,
+                                                             kernel_A[ind_AB[ij, -2]],
+                                                             kernel_B[ind_AB[ij, -1]],
+                                                             ell, tkka,
+                                                             sigma2_B=None, fsky=f_sky,
+                                                             cltracer3=kernel_C[ind_CD[kl, -2]],
+                                                             cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                             ell2=None,
+                                                             integration_method=integration_method)
+                                        for kl in range(zpairs_CD)
+                                        for ij in tqdm(range(zpairs_AB)))
+    print(f'parallel version took {time.perf_counter() - start_time} seconds')
 
-        zpairs_AB = ind_AB.shape[0]
-        zpairs_CD = ind_CD.shape[0]
-
-        # start_time = time.perf_counter()
-        # cov_ng = np.zeros((nbl, nbl, zpairs_AB, zpairs_CD))
-        # for ij in tqdm(range(zpairs_AB)):
-        #     for kl in range(zpairs_CD):
-        #         i, j, k, l = ind_AB[ij, -2], ind_AB[ij, -1], ind_CD[kl, -2], ind_CD[kl, -1]
-        #
-        #         cov_ng[:, :, ij, kl] = ng_function(cosmo, kernel_A[i], kernel_B[j],
-        #                                            ell, tkka,
-        #                                            sigma2_B=None, fsky=f_sky,
-        #                                            cltracer3=kernel_C[k],
-        #                                            cltracer4=kernel_D[l],
-        #                                            ell2=None,
-        #                                            integration_method=integration_method)
-        # print(f'serial version took {time.perf_counter() - start_time} seconds')
-
-        # parallel version:
-        start_time = time.perf_counter()
-        cov_ng_parallel = Parallel(
-            n_jobs=-1, backend='threading')(delayed(ng_function)(cosmo,
-                                                                 kernel_A[ind_AB[ij, -2]],
-                                                                 kernel_B[ind_AB[ij, -1]],
-                                                                 ell, tkka,
-                                                                 sigma2_B=None, fsky=f_sky,
-                                                                 cltracer3=kernel_C[ind_CD[kl, -2]],
-                                                                 cltracer4=kernel_D[ind_CD[kl, -1]],
-                                                                 ell2=None,
-                                                                 integration_method=integration_method)
-                                            for kl in range(zpairs_CD)
-                                            for ij in tqdm(range(zpairs_AB)))
-        print(f'parallel version took {time.perf_counter() - start_time} seconds')
-
-
-    elif not optimize:
-        cov_ng = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))
-        for i in tqdm(range(zbins)):
-            for j in range(zbins):
-                for k in range(zbins):
-                    for l in range(zbins):
-                        cov_ng[:, :, i, j, k, l] = ng_function(cosmo, kernel_A[i], kernel_B[j],
-                                                               ell, tkka,
-                                                               sigma2_B=None, fsky=f_sky,
-                                                               cltracer3=kernel_C[k],
-                                                               cltracer4=kernel_D[l],
-                                                               ell2=None,
-                                                               integration_method=integration_method)
-    else:
-        raise ValueError('optimize must be either True or False')
+    cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
 
     return cov_ng
 
 
-def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
-                        probe_ordering, probe_combinations_3x2pt):
-    # TODO finish this function
-    cov_SSC_3x2pt_dict_10D = {}
-    for A, B, C, D in probe_combinations_3x2pt:
-        print('3x2pt: working on probe combination ', A, B, C, D)
-        cov_SSC_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
-                                                                         probe_wf_dict[A], probe_wf_dict[B],
-                                                                         probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
-                                                                         f_sky, ng_function, integration_method)
-        np.save(
-            f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_grid_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
-            cov_SSC_3x2pt_dict_10D[A, B, C, D])
-
-    # TODO test this by loading the cov_SSC_3x2pt_arr_10D from file (and then storing it into a dictionary)
-    # symmetrize the matrix:
-    LL = probe_ordering[0][0], probe_ordering[0][1]
-    GL = probe_ordering[1][0], probe_ordering[1][1]  # ! what if I use LG? check (it should be fine...)
-    GG = probe_ordering[2][0], probe_ordering[2][1]
-    # note: the addition is only to have a singe tuple of strings, instead of a tuple of 2 tuples
-    cov_SSC_3x2pt_dict_10D[GL + LL] = cov_SSC_3x2pt_dict_10D[LL + GL][...]
-    cov_SSC_3x2pt_dict_10D[GG + LL] = cov_SSC_3x2pt_dict_10D[LL + GG][...]
-    cov_SSC_3x2pt_dict_10D[GG + GL] = cov_SSC_3x2pt_dict_10D[GL + GG][...]
-
-    return cov_SSC_3x2pt_dict_10D
+# def compute_3x2pt_PyCCL_v0(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
+#                         probe_ordering, probe_combinations_3x2pt):
+#     # TODO finish this function
+#     cov_SSC_3x2pt_dict_10D = {}
+#     for A, B, C, D in probe_combinations_3x2pt:
+#         print('3x2pt: working on probe combination ', A, B, C, D)
+#         cov_SSC_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
+#                                                                          probe_wf_dict[A], probe_wf_dict[B],
+#                                                                          probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
+#                                                                          f_sky, ng_function, integration_method)
+#         np.save(
+#             f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_grid_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
+#             cov_SSC_3x2pt_dict_10D[A, B, C, D])
+#
+#     # TODO test this by loading the cov_SSC_3x2pt_arr_10D from file (and then storing it into a dictionary)
+#     # symmetrize the matrix:
+#     LL = probe_ordering[0][0], probe_ordering[0][1]
+#     GL = probe_ordering[1][0], probe_ordering[1][1]  # ! what if I use LG? check (it should be fine...)
+#     GG = probe_ordering[2][0], probe_ordering[2][1]
+#     # note: the addition is only to have a singe tuple of strings, instead of a tuple of 2 tuples
+#     cov_SSC_3x2pt_dict_10D[GL + LL] = cov_SSC_3x2pt_dict_10D[LL + GL][...]
+#     cov_SSC_3x2pt_dict_10D[GG + LL] = cov_SSC_3x2pt_dict_10D[LL + GG][...]
+#     cov_SSC_3x2pt_dict_10D[GG + GL] = cov_SSC_3x2pt_dict_10D[GL + GG][...]
+#
+#     return cov_SSC_3x2pt_dict_10D
 
 
 def compute_3x2pt_PyCCL_v2(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integration_method,
@@ -411,19 +376,19 @@ for probe in probes:
             cov_6D = mm.cov_4D_to_6D(cov_4D, nbl, zbins, 'LL', ind)
 
         elif probe == '3x2pt':
-            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka,
-                                                     f_sky, 'qag_quad',
-                                                     probe_ordering, probe_combinations_3x2pt)
+            # cov_3x2pt_dict_10D = compute_3x2pt_PyCCL_v0(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka,
+            #                                          f_sky, 'qag_quad',
+            #                                          probe_ordering, probe_combinations_3x2pt)
             cov_3x2pt_dict_10D_v2 = compute_3x2pt_PyCCL_v2(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka, f_sky,
                                                            'qag_quad', probe_ordering, ind_dict, output_4D_array=False)
             # TODO finish this comparison and refactoring/parallelization of the auto covariance
             # TODO finish testing simmetry in ell1, ell2?? Already done a million times...
-            for key in cov_3x2pt_dict_10D_v2.keys():
-                np.testing.assert_allclose(cov_3x2pt_dict_10D_v2[key], cov_3x2pt_dict_10D[key], atol=0, rtol=1e-8)
+            # for key in cov_3x2pt_dict_10D_v2.keys():
+                # np.testing.assert_allclose(cov_3x2pt_dict_10D_v2[key], cov_3x2pt_dict_10D[key], atol=0, rtol=1e-8)
 
             # stack everything and reshape to 4D
-            cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
-                                                       GL_or_LG)
+            # cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
+            #                                            GL_or_LG)
         else:
             raise ValueError('probe must be either LL, GG, or 3x2pt')
 
