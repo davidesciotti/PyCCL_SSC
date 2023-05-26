@@ -129,35 +129,8 @@ def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, e
     return cov_ng
 
 
-# def compute_3x2pt_PyCCL_v0(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, integration_method,
-#                         probe_ordering, probe_combinations_3x2pt):
-#     # TODO finish this function
-#     cov_SSC_3x2pt_dict_10D = {}
-#     for A, B, C, D in probe_combinations_3x2pt:
-#         print('3x2pt: working on probe combination ', A, B, C, D)
-#         cov_SSC_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
-#                                                                          probe_wf_dict[A], probe_wf_dict[B],
-#                                                                          probe_wf_dict[C], probe_wf_dict[D], ell, tkka,
-#                                                                          f_sky, ng_function, integration_method)
-#         np.save(
-#             f'{project_path}/output/covariance/cov_PyCCL_{which_NG}_3x2pt_{A}{B}{C}{D}_nbl{nbl}_ells{ell_grid_recipe}_ellmax{ell_max}_hm_recipe{hm_recipe}.npy',
-#             cov_SSC_3x2pt_dict_10D[A, B, C, D])
-#
-#     # TODO test this by loading the cov_SSC_3x2pt_arr_10D from file (and then storing it into a dictionary)
-#     # symmetrize the matrix:
-#     LL = probe_ordering[0][0], probe_ordering[0][1]
-#     GL = probe_ordering[1][0], probe_ordering[1][1]  # ! what if I use LG? check (it should be fine...)
-#     GG = probe_ordering[2][0], probe_ordering[2][1]
-#     # note: the addition is only to have a singe tuple of strings, instead of a tuple of 2 tuples
-#     cov_SSC_3x2pt_dict_10D[GL + LL] = cov_SSC_3x2pt_dict_10D[LL + GL][...]
-#     cov_SSC_3x2pt_dict_10D[GG + LL] = cov_SSC_3x2pt_dict_10D[LL + GG][...]
-#     cov_SSC_3x2pt_dict_10D[GG + GL] = cov_SSC_3x2pt_dict_10D[GL + GG][...]
-#
-#     return cov_SSC_3x2pt_dict_10D
-
-
-def compute_3x2pt_PyCCL_v2(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integration_method,
-                           probe_ordering, ind_dict, output_4D_array=True):
+def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integration_method,
+                        probe_ordering, ind_dict, output_4D_array=True):
     cov_ng_3x2pt_dict_10D = {}
     for A, B in probe_ordering:
         for C, D in probe_ordering:
@@ -174,9 +147,6 @@ def compute_3x2pt_PyCCL_v2(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, in
 
     return cov_ng_3x2pt_dict_10D
 
-
-# compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
-# compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 
 # ======================================================================================================================
 # ======================================================================================================================
@@ -211,6 +181,8 @@ use_ray = cfg['use_ray']  # TODO finish this!
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 n_samples_wf = cfg['n_samples_wf']
+get_3xtpt_cov_in_4D = cfg['get_3xtpt_cov_in_4D']
+bias_model = cfg['bias_model']
 # ! settings
 
 # ======================================================================================================================
@@ -242,7 +214,7 @@ n_of_z = niz_normalized_arr
 
 # galaxy bias
 galaxy_bias_2d_array = wf_cl_lib.build_galaxy_bias_2d_arr(bias_values=None, z_values=None, zbins=zbins,
-                                                          z_grid=z_grid, bias_model='step-wise',
+                                                          z_grid=z_grid, bias_model=bias_model,
                                                           plot_bias=False)
 
 # IA bias
@@ -260,6 +232,7 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
                                             mag_bias=None, n_samples=n_samples_wf)
              for zbin_idx in range(zbins)]
 
+# the cls are not needed, but just in case:
 # cl_LL_3D = wf_cl_lib.cl_PyCCL(wf_lensing, wf_lensing, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 # cl_GL_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_lensing, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 # cl_GG_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_galaxy, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
@@ -270,40 +243,8 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 
 tkka = initialize_trispectrum()
 
-# re-define the functions if using ray
-# if use_ray:
-#     compute_SSC_PyCCL = compute_SSC_PyCCL_ray.remote
-#     compute_cNG_PyCCL = compute_cNG_PyCCL_ray.remote
-
-
-integration_method_dict = {
-    'LL': {
-        'SSC': 'spline',
-        'cNG': 'spline',
-    },
-    'GG': {
-        'SSC': 'qag_quad',
-        'cNG': 'qag_quad',
-    },
-    '3x2pt': {
-        'SSC': 'qag_quad',
-        'cNG': 'spline',
-    }
-}
-
-# TODO it should be:
+# covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
-
-# probe_ordering = ('LL', f'{GL_or_LG}', 'GG')
-
-# upper diagonal of blocks of the covariance matrix
-probe_combinations_3x2pt = (
-    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[0][0], probe_ordering[0][1]),
-    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[1][0], probe_ordering[1][1]),
-    (probe_ordering[0][0], probe_ordering[0][1], probe_ordering[2][0], probe_ordering[2][1]),
-    (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[1][0], probe_ordering[1][1]),
-    (probe_ordering[1][0], probe_ordering[1][1], probe_ordering[2][0], probe_ordering[2][1]),
-    (probe_ordering[2][0], probe_ordering[2][1], probe_ordering[2][0], probe_ordering[2][1]))
 
 # convenience dictionaries
 ind_dict = {
@@ -320,6 +261,21 @@ probe_idx_dict = {
 kernel_dict = {
     'L': wf_lensing,
     'G': wf_galaxy
+}
+
+integration_method_dict = {
+    'LL': {
+        'SSC': 'spline',
+        'cNG': 'spline',
+    },
+    'GG': {
+        'SSC': 'qag_quad',
+        'cNG': 'qag_quad',
+    },
+    '3x2pt': {
+        'SSC': 'qag_quad',
+        'cNG': 'spline',
+    }
 }
 
 for probe in probes:
@@ -366,29 +322,32 @@ for probe in probes:
             ind_AB = ind_dict[probe[0] + probe[1]]
             ind_CD = ind_dict[probe[0] + probe[1]]
 
-            cov_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
+            cov_ng_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
                                                  kernel_A=kernel_A, kernel_B=kernel_B, kernel_C=kernel_C,
                                                  kernel_D=kernel_D,
                                                  ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
                                                  integration_method=integration_method_dict[probe][which_NG],
                                                  ind_AB=ind_AB, ind_CD=ind_CD)
 
-            cov_6D = mm.cov_4D_to_6D(cov_4D, nbl, zbins, 'LL', ind)
 
         elif probe == '3x2pt':
-            # cov_3x2pt_dict_10D = compute_3x2pt_PyCCL_v0(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka,
-            #                                          f_sky, 'qag_quad',
-            #                                          probe_ordering, probe_combinations_3x2pt)
-            cov_3x2pt_dict_10D_v2 = compute_3x2pt_PyCCL_v2(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka, f_sky,
-                                                           'qag_quad', probe_ordering, ind_dict, output_4D_array=False)
-            # TODO finish this comparison and refactoring/parallelization of the auto covariance
-            # TODO finish testing simmetry in ell1, ell2?? Already done a million times...
-            # for key in cov_3x2pt_dict_10D_v2.keys():
-                # np.testing.assert_allclose(cov_3x2pt_dict_10D_v2[key], cov_3x2pt_dict_10D[key], atol=0, rtol=1e-8)
+            # let's test this:
+            A, B, C, D = 'L', 'L', 'L', 'L'
+            cov_ng_3x2pt_dict_10D = {}
+            cov_ng_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo_ccl,
+                                                                            kernel_dict[A], kernel_dict[B],
+                                                                            kernel_dict[C], kernel_dict[D],
+                                                                            ell, tkka, f_sky, ng_function,
+                                                                            ind_AB=ind_dict[A + B],
+                                                                            ind_CD=ind_dict[C + D],
+                                                                            integration_method=integration_method)
 
-            # stack everything and reshape to 4D
-            # cov_3x2pt_4D = mm.cov_3x2pt_dict_10D_to_4D(cov_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind,
-            #                                            GL_or_LG)
+            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka, f_sky,
+                                                        'qag_quad', probe_ordering, ind_dict,
+                                                     output_4D_array=get_3xtpt_cov_in_4D)
+
+
+
         else:
             raise ValueError('probe must be either LL, GG, or 3x2pt')
 
@@ -398,16 +357,8 @@ for probe in probes:
             filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}' \
                        f'_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
-            if probe in ['LL', 'GG']:
-                np.save(f'{output_folder}/{filename}_6D.npy', cov_6D)
-                np.save(f'{output_folder}/{filename}_4D.npy', cov_4D)
-
-            elif probe == '3x2pt':
-                # save both as dict and as 4D npy array
-                with open(f'{filename}_10D.pickle', 'wb') as handle:
-                    pickle.dump(cov_3x2pt_dict_10D, handle)
-
-                np.save(f'{filename}_4D.npy', cov_3x2pt_4D)
+            np.save(f'{output_folder}/{filename}_4D.npy', cov_ng_4D)
+            cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
 
             mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
