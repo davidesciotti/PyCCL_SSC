@@ -160,10 +160,12 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integ
     for A, B in probe_ordering:
         for C, D in probe_ordering:
             print('3x2pt: working on probe combination ', A, B, C, D)
-            cov_ng_3x2pt_dict_10D[A, B, C, D] = ng_function(cosmo,
-                                                            kernel_dict[A], kernel_dict[B],
-                                                            kernel_dict[C], kernel_dict[D],
-                                                            ell, tkka, f_sky, ng_function,
+            cov_ng_3x2pt_dict_10D[A, B, C, D] = ng_function(cosmo=cosmo,
+                                                            kernel_A=kernel_dict[A],
+                                                            kernel_B=kernel_dict[B],
+                                                            kernel_C=kernel_dict[C],
+                                                            kernel_D=kernel_dict[D],
+                                                            ell=ell, tkka=tkka, f_sky=f_sky,
                                                             ind_AB=ind_dict[A + B],
                                                             ind_CD=ind_dict[C + D],
                                                             integration_method=integration_method)
@@ -343,9 +345,9 @@ for probe in probes:
             assert probe[0] == probe[1], 'probe must be either LL or GG'
 
             kernel_A = kernel_dict[probe[0]]
-            kernel_B = kernel_dict[probe[0]]
+            kernel_B = kernel_dict[probe[1]]
             kernel_C = kernel_dict[probe[0]]
-            kernel_D = kernel_dict[probe[0]]
+            kernel_D = kernel_dict[probe[1]]
             ind_AB = ind_dict[probe[0] + probe[1]]
             ind_CD = ind_dict[probe[0] + probe[1]]
 
@@ -357,7 +359,6 @@ for probe in probes:
                                     integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
-
             cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
                                             kernel_dict=kernel_dict,
                                             ell=ell_grid, tkka=tkka, f_sky=f_sky,
@@ -368,21 +369,19 @@ for probe in probes:
 
             cov_ng_2D = mm.cov_4D_to_2D(cov_ng_4D)
 
-
         else:
             raise ValueError('probe must be either LL, GG, or 3x2pt')
 
         if save_covs:
             output_folder = f'{project_path}/output/covmat/after_script_update'
-            filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}' \
-                       f'_ellmax{ell_max}_HMrecipe{hm_recipe}'
+            filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
             np.save(f'{output_folder}/{filename}_4D.npy', cov_ng_4D)
             # cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
 
             # mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
-assert 1 > 2, 'stop here'
+assert 1 > 2, 'end of script'
 
 ind = np.load(
     f'{project_path.parent}/common_data/ind_files/variable_zbins/{triu_or_tril}_{row_col}-wise/indices_{triu_or_tril}_{row_col}-wise_zbins{zbins}.dat')
