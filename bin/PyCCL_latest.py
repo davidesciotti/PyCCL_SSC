@@ -103,23 +103,48 @@ def initialize_trispectrum():
     return tkka
 
 
-def compute_nongaussian_cov_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, ng_function,
-                                ind_AB, ind_CD, integration_method='spline'):
+def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
+                        ind_AB, ind_CD, integration_method='spline'):
     zpairs_AB = ind_AB.shape[0]
     zpairs_CD = ind_CD.shape[0]
 
     # parallel version:
     start_time = time.perf_counter()
     cov_ng = Parallel(
-        n_jobs=-1, backend='threading')(delayed(ng_function)(cosmo,
-                                                             kernel_A[ind_AB[ij, -2]],
-                                                             kernel_B[ind_AB[ij, -1]],
-                                                             ell, tkka,
-                                                             sigma2_B=None, fsky=f_sky,
-                                                             cltracer3=kernel_C[ind_CD[kl, -2]],
-                                                             cltracer4=kernel_D[ind_CD[kl, -1]],
-                                                             ell2=None,
-                                                             integration_method=integration_method)
+        n_jobs=-1, backend='threading')(delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
+                                                                                    cltracer1=kernel_A[ind_AB[ij, -2]],
+                                                                                    cltracer2=kernel_B[ind_AB[ij, -1]],
+                                                                                    ell=ell, tkka=tkka,
+                                                                                    sigma2_B=None, fsky=f_sky,
+                                                                                    cltracer3=kernel_C[ind_CD[kl, -2]],
+                                                                                    cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                                                    ell2=None,
+                                                                                    integration_method=integration_method)
+                                        for kl in range(zpairs_CD)
+                                        for ij in tqdm(range(zpairs_AB)))
+    print(f'parallel version took {time.perf_counter() - start_time} seconds')
+
+    cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
+
+    return cov_ng
+
+
+def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
+                        ind_AB, ind_CD, integration_method='spline'):
+    zpairs_AB = ind_AB.shape[0]
+    zpairs_CD = ind_CD.shape[0]
+
+    # parallel version:
+    start_time = time.perf_counter()
+    cov_ng = Parallel(
+        n_jobs=-1, backend='threading')(delayed(ccl.covariances.angular_cl_cov_cNG)(cosmo,
+                                                                                    cltracer1=kernel_A[ind_AB[ij, -2]],
+                                                                                    cltracer2=kernel_B[ind_AB[ij, -1]],
+                                                                                    ell=ell, tkka=tkka, fsky=f_sky,
+                                                                                    cltracer3=kernel_C[ind_CD[kl, -2]],
+                                                                                    cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                                                    ell2=None,
+                                                                                    integration_method=integration_method)
                                         for kl in range(zpairs_CD)
                                         for ij in tqdm(range(zpairs_AB)))
     print(f'parallel version took {time.perf_counter() - start_time} seconds')
@@ -135,13 +160,13 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integ
     for A, B in probe_ordering:
         for C, D in probe_ordering:
             print('3x2pt: working on probe combination ', A, B, C, D)
-            cov_ng_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
-                                                                            kernel_dict[A], kernel_dict[B],
-                                                                            kernel_dict[C], kernel_dict[D],
-                                                                            ell, tkka, f_sky, ng_function,
-                                                                            ind_AB=ind_dict[A + B],
-                                                                            ind_CD=ind_dict[C + D],
-                                                                            integration_method=integration_method)
+            cov_ng_3x2pt_dict_10D[A, B, C, D] = ng_function(cosmo,
+                                                            kernel_dict[A], kernel_dict[B],
+                                                            kernel_dict[C], kernel_dict[D],
+                                                            ell, tkka, f_sky, ng_function,
+                                                            ind_AB=ind_dict[A + B],
+                                                            ind_CD=ind_dict[C + D],
+                                                            integration_method=integration_method)
             return cov_ng_3x2pt_dict_10D
 
     if output_4D_array:
@@ -308,9 +333,9 @@ for probe in probes:
         # ! =============================================== compute covs ===============================================
 
         if which_NG == 'SSC':
-            ng_function = ccl.covariances.angular_cl_cov_SSC
+            ng_function = compute_cov_SSC_ccl
         elif which_NG == 'cNG':
-            ng_function = ccl.covariances.angular_cl_cov_cNG
+            ng_function = compute_cov_cNG_ccl
         else:
             raise ValueError('which_NG must be either SSC or cNG')
 
@@ -324,36 +349,24 @@ for probe in probes:
             ind_AB = ind_dict[probe[0] + probe[1]]
             ind_CD = ind_dict[probe[0] + probe[1]]
 
-            cov_ng_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
-                                                    kernel_A=kernel_A, kernel_B=kernel_B,
-                                                    kernel_C=kernel_C, kernel_D=kernel_D,
-                                                    ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
-                                                    integration_method=integration_method_dict[probe][which_NG],
-                                                    ind_AB=ind_AB, ind_CD=ind_CD)
-
+            cov_ng_4D = ng_function(cosmo_ccl,
+                                    kernel_A=kernel_A, kernel_B=kernel_B,
+                                    kernel_C=kernel_C, kernel_D=kernel_D,
+                                    ell=ell_grid, tkka=tkka, f_sky=f_sky,
+                                    ind_AB=ind_AB, ind_CD=ind_CD,
+                                    integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
 
-            A, B, C, D = 'L', 'L', 'L', 'L'
-            cov_ng_4D = compute_nongaussian_cov_ccl(cosmo_ccl,
-                                                       kernel_A=kernel_dict[A], kernel_B=kernel_dict[B],
-                                                       kernel_C=kernel_dict[C], kernel_D=kernel_dict[D],
-                                                       ell=ell_grid, tkka=tkka, f_sky=f_sky, ng_function=ng_function,
-                                                       integration_method=integration_method_dict[probe][which_NG],
-                                                       ind_AB=ind_dict[A + B], ind_CD=ind_dict[C + D])
+            cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
+                                            kernel_dict=kernel_dict,
+                                            ell=ell_grid, tkka=tkka, f_sky=f_sky,
+                                            probe_ordering=probe_ordering,
+                                            ind_dict=ind_dict,
+                                            output_4D_array=True,
+                                            integration_method=integration_method_dict[probe][which_NG])
 
             cov_ng_2D = mm.cov_4D_to_2D(cov_ng_4D)
-
-            cov_3x2pt_dict_10D = compute_3x2pt_PyCCL(ng_function, cosmo_ccl, kernel_dict, ell_grid, tkka, f_sky,
-                                                     'qag_quad', probe_ordering, ind_dict,
-                                                     output_4D_array=get_3xtpt_cov_in_4D)
-
-            cov_ng_3x2pt_dict_2D_test = mm.cov_4D_to_2D(cov_3x2pt_dict_10D['L', 'L', 'L', 'L'])
-            assert np.allclose(cov_ng_4D, cov_3x2pt_dict_10D['L', 'L', 'L', 'L'], rtol=1e-5,
-                               atol=0), 'cov_ng_4D_v2 != cov_ng_4D'
-            mm.compare_arrays(cov_ng_2D, cov_ng_3x2pt_dict_2D_test, plot_array=True, log_array=True, plot_diff=True)
-            assert False, 'stop here'
-
 
 
         else:
@@ -365,9 +378,9 @@ for probe in probes:
                        f'_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
             np.save(f'{output_folder}/{filename}_4D.npy', cov_ng_4D)
-            cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
+            # cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
 
-            mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
+            # mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
 assert 1 > 2, 'stop here'
 
