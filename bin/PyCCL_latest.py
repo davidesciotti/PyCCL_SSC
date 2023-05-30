@@ -169,7 +169,6 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integ
                                                             ind_AB=ind_dict[A + B],
                                                             ind_CD=ind_dict[C + D],
                                                             integration_method=integration_method)
-            return cov_ng_3x2pt_dict_10D
 
     if output_4D_array:
         return mm.cov_3x2pt_10D_to_4D(cov_ng_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind.copy(), GL_or_LG)
