@@ -2,6 +2,7 @@ import pdb
 import pickle
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -156,24 +157,24 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
 def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integration_method,
                         probe_ordering, ind_dict, output_4D_array=True):
-    cov_ng_3x2pt_dict_10D = {}
+    cov_ng_3x2pt_dict_8D = {}
     for A, B in probe_ordering:
         for C, D in probe_ordering:
             print('3x2pt: working on probe combination ', A, B, C, D)
-            cov_ng_3x2pt_dict_10D[A, B, C, D] = ng_function(cosmo=cosmo,
-                                                            kernel_A=kernel_dict[A],
-                                                            kernel_B=kernel_dict[B],
-                                                            kernel_C=kernel_dict[C],
-                                                            kernel_D=kernel_dict[D],
-                                                            ell=ell, tkka=tkka, f_sky=f_sky,
-                                                            ind_AB=ind_dict[A + B],
-                                                            ind_CD=ind_dict[C + D],
-                                                            integration_method=integration_method)
+            cov_ng_3x2pt_dict_8D[A, B, C, D] = ng_function(cosmo=cosmo,
+                                                           kernel_A=kernel_dict[A],
+                                                           kernel_B=kernel_dict[B],
+                                                           kernel_C=kernel_dict[C],
+                                                           kernel_D=kernel_dict[D],
+                                                           ell=ell, tkka=tkka, f_sky=f_sky,
+                                                           ind_AB=ind_dict[A + B],
+                                                           ind_CD=ind_dict[C + D],
+                                                           integration_method=integration_method)
 
     if output_4D_array:
-        return mm.cov_3x2pt_10D_to_4D(cov_ng_3x2pt_dict_10D, probe_ordering, nbl, zbins, ind.copy(), GL_or_LG)
+        return mm.cov_3x2pt_8D_dict_to_4D(cov_ng_3x2pt_dict_8D, probe_ordering)
 
-    return cov_ng_3x2pt_dict_10D
+    return cov_ng_3x2pt_dict_8D
 
 
 # ======================================================================================================================
@@ -358,6 +359,8 @@ for probe in probes:
                                     integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
+            warnings.warn("DELETE THIS")
+            probe_ordering = (('L', 'L'),)
             cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
                                             kernel_dict=kernel_dict,
                                             ell=ell_grid, tkka=tkka, f_sky=f_sky,
