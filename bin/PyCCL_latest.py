@@ -21,11 +21,11 @@ ray.init()
 # get project directory adn import useful modules
 project_path = Path.cwd().parent
 
-sys.path.append(f'../../common_data/common_lib')
+sys.path.append(f'../../common_lib_and_cfg/common_lib')
 import my_module as mm
 import cosmo_lib
 
-sys.path.append(f'../../common_data/common_config')
+sys.path.append(f'../../common_lib_and_cfg/common_config')
 import ISTF_fid_params as ISTF_fid
 import mpl_cfg
 
@@ -109,6 +109,7 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     zpairs_AB = ind_AB.shape[0]
     zpairs_CD = ind_CD.shape[0]
 
+    # TODO switch off the integration method and see if it crashes
     # parallel version:
     start_time = time.perf_counter()
     cov_ng = Parallel(
@@ -229,7 +230,7 @@ assert GL_or_LG == 'GL', 'you should update ind_cross (used in ind_dict) for GL,
 
 # ! compute cls, just as a test
 ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
-np.savetxt(f'{project_path}/output/ell_values/ell_values.txt', ell_grid)
+np.savetxt(f'{project_path}/output/ell_values/ell_values_nbl{nbl}.txt', ell_grid)
 
 # Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
 # functions
@@ -359,8 +360,6 @@ for probe in probes:
                                     integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
-            warnings.warn("DELETE THIS")
-            probe_ordering = (('L', 'L'),)
             cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
                                             kernel_dict=kernel_dict,
                                             ell=ell_grid, tkka=tkka, f_sky=f_sky,
@@ -378,7 +377,7 @@ for probe in probes:
             output_folder = f'{project_path}/output/covmat/after_script_update'
             filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
-            np.save(f'{output_folder}/{filename}_4D.npy', cov_ng_4D)
+            np.savez_compressed(f'{output_folder}/{filename}_4D.npz', cov_ng_4D)
             # cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
 
             # mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
