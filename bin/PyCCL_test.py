@@ -238,11 +238,11 @@ wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
                                       mag_bias=None) for iz in range(zbins)]
 
-# Import fiducial P(k,z)
+# Import fiducial P(k,z_hm)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
 
 # ! XXX are the units correct?
-# Populate vectors for z, k [1/Mpc], and P(k,z) [Mpc^3]
+# Populate vectors for z_hm, k [1/Mpc], and P(k,z_hm) [Mpc^3]
 zlist = np.unique(PkFILE[:, 0])
 k_points = int(len(PkFILE[:, 2]) / len(zlist))
 klist = PkFILE[:k_points, 1] * cosmo.cosmo_ccl.params.h

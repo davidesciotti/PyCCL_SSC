@@ -94,12 +94,14 @@ def initialize_trispectrum():
     # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
     # 🐛 bug fixed: normprof shoud be True
     # 🐛 bug fixed?: p_of_k_a=None instead of Pk
+
     tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
                                                  prof1=halo_profile, prof2=None, prof12_2pt=None,
                                                  prof3=None, prof4=None, prof34_2pt=None,
                                                  normprof1=True, normprof2=True, normprof3=True, normprof4=True,
                                                  p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
                                                  extrap_order_hik=1, use_log=False)
+    assert False, 'should I use HaloProfileHOD for number counts???'  # TODO
     print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
     return tkka
 
@@ -293,10 +295,25 @@ kernel_dict = {
     'G': wf_galaxy
 }
 
+# integration_method_dict = {
+#     'LL': {
+#         'SSC': 'spline',
+#         'cNG': 'spline',
+#     },
+#     'GG': {
+#         'SSC': 'qag_quad',
+#         'cNG': 'qag_quad',
+#     },
+#     '3x2pt': {
+#         'SSC': 'qag_quad',
+#         'cNG': 'spline',
+#     }
+# }
+
 integration_method_dict = {
     'LL': {
-        'SSC': 'spline',
-        'cNG': 'spline',
+        'SSC': 'qag_quad',
+        'cNG': 'qag_quad',
     },
     'GG': {
         'SSC': 'qag_quad',
@@ -304,9 +321,10 @@ integration_method_dict = {
     },
     '3x2pt': {
         'SSC': 'qag_quad',
-        'cNG': 'spline',
+        'cNG': 'qag_quad',
     }
 }
+
 
 for probe in probes:
     for which_NG in which_NGs:

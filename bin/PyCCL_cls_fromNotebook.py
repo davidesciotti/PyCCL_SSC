@@ -42,12 +42,12 @@ i_lim = 26.  # Limiting i-band magnitude
 z0 = 0.0417 * i_lim - 0.744
 
 Ngal = 46. * 100.31 * (i_lim - 25.)  # Normalisation, galaxies/arcmin^2
-pz = 1. / (2. * z0) * (z / z0) ** 2. * np.exp(-z / z0)  # Redshift distribution, p(z)
+pz = 1. / (2. * z0) * (z / z0) ** 2. * np.exp(-z / z0)  # Redshift distribution, p(z_hm)
 dNdz = Ngal * pz  # Number density distribution
-b = 1.5 * np.ones(200)  # Galaxy bias (constant with scale and z)
+b = 1.5 * np.ones(200)  # Galaxy bias (constant with scale and z_hm)
 
-plt.xlabel('$z$', fontsize=18)
-plt.ylabel('$N(z)$', fontsize=18)
+plt.xlabel('$z_hm$', fontsize=18)
+plt.ylabel('$N(z_hm)$', fontsize=18)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.plot(z, dNdz)

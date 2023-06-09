@@ -40,9 +40,9 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 
 def bias(z, zi):
     zbins = len(zi[0])
-    z_minus = zi[0, :]  # lower edge of z bins
-    z_plus = zi[1, :]  # upper edge of z bins
-    z_mean = (z_minus + z_plus) / 2  # cener of the z bins
+    z_minus = zi[0, :]  # lower edge of z_hm bins
+    z_plus = zi[1, :]  # upper edge of z_hm bins
+    z_mean = (z_minus + z_plus) / 2  # cener of the z_hm bins
 
     for i in range(zbins):
         if z_minus[i] <= z < z_plus[i]:
@@ -149,8 +149,8 @@ for i in range(zbins):
 # nziEuclid_tosave = np.insert(nziEuclid.copy(), values=ztab, obj=0, axis=0).T
 
 
-# plt.xlabel('$z$')
-# plt.ylabel('$n_i(z)\,[\mathrm{arcmin}^{-2}]$')
+# plt.xlabel('$z_hm$')
+# plt.ylabel('$n_i(z_hm)\,[\mathrm{arcmin}^{-2}]$')
 # [plt.plot(ztab, nziEuclid[iz]) for iz in range(Nbins)]
 # plt.show()
 
@@ -178,11 +178,11 @@ wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEucli
 
 assert 1 > 2, 'stop here'
 
-# Import fiducial P(k,z)
+# Import fiducial P(k,z_hm)
 PkFILE = np.genfromtxt(project_path / 'input/pkz-Fiducial.txt')
 
 # ! XXX are the units correct?
-# Populate vectors for z, k [1/Mpc], and P(k,z) [Mpc^3]
+# Populate vectors for z_hm, k [1/Mpc], and P(k,z_hm) [Mpc^3]
 zlist = np.unique(PkFILE[:, 0])
 k_points = int(len(PkFILE[:, 2]) / len(zlist))
 klist = PkFILE[:k_points, 1] * cosmo.cosmo_ccl.params.h
