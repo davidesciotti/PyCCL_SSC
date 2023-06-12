@@ -32,7 +32,7 @@ import mpl_cfg
 sys.path.append(f'../../SSC_restructured_v2/bin')
 import ell_values as ell_utils
 
-sys.path.append(f'../../cl_v2/lib')
+sys.path.append(f'../../cl_v2/bin')
 import wf_cl_lib
 
 matplotlib.use('Qt5Agg')
@@ -89,6 +89,7 @@ def initialize_trispectrum():
     halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
                                                      fourier_analytic=True, projected_analytic=False,
                                                      cumul2d_analytic=False, truncated=True)
+    # halo_profile = ccl.halos.profiles.HaloProfileHOD(c_M_relation=c_M_relation)
 
     # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
     # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
@@ -101,8 +102,8 @@ def initialize_trispectrum():
                                                  normprof1=True, normprof2=True, normprof3=True, normprof4=True,
                                                  p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
                                                  extrap_order_hik=1, use_log=False)
-    assert False, 'should I use HaloProfileHOD for number counts???'  # TODO
-    print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
+    # assert False, 'should I use HaloProfileHOD for number counts???'  # TODO
+    print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - halomod_start_time))
     return tkka
 
 
@@ -111,7 +112,6 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     zpairs_AB = ind_AB.shape[0]
     zpairs_CD = ind_CD.shape[0]
 
-    # TODO switch off the integration method and see if it crashes
     # parallel version:
     start_time = time.perf_counter()
     cov_ng = Parallel(
@@ -126,7 +126,7 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
                                                                                     integration_method=integration_method)
                                         for kl in range(zpairs_CD)
                                         for ij in tqdm(range(zpairs_AB)))
-    print(f'parallel version took {time.perf_counter() - start_time} seconds')
+    print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
 
@@ -151,7 +151,7 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
                                                                                     integration_method=integration_method)
                                         for kl in range(zpairs_CD)
                                         for ij in tqdm(range(zpairs_AB)))
-    print(f'parallel version took {time.perf_counter() - start_time} seconds')
+    print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
 
@@ -200,6 +200,7 @@ ell_grid_recipe = cfg['ell_grid_recipe']
 sky_area_deg2 = cfg['sky_area_deg2']
 probes = cfg['probes']
 which_NGs = cfg['which_NGs']
+tkka_is_none = cfg['tkka_is_none']
 save_covs = cfg['save_covs']
 hm_recipe = cfg['hm_recipe']
 GL_or_LG = cfg['GL_or_LG']
@@ -273,7 +274,12 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
 
-tkka = initialize_trispectrum()
+if tkka_is_none:
+    tkka = None
+elif not tkka_is_none:
+    tkka = initialize_trispectrum()
+else:
+    raise ValueError('tkka_is_none should be True or False')
 
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
@@ -295,25 +301,10 @@ kernel_dict = {
     'G': wf_galaxy
 }
 
-# integration_method_dict = {
-#     'LL': {
-#         'SSC': 'spline',
-#         'cNG': 'spline',
-#     },
-#     'GG': {
-#         'SSC': 'qag_quad',
-#         'cNG': 'qag_quad',
-#     },
-#     '3x2pt': {
-#         'SSC': 'qag_quad',
-#         'cNG': 'spline',
-#     }
-# }
-
 integration_method_dict = {
     'LL': {
-        'SSC': 'qag_quad',
-        'cNG': 'qag_quad',
+        'SSC': 'spline',
+        'cNG': 'spline',
     },
     'GG': {
         'SSC': 'qag_quad',
@@ -321,10 +312,25 @@ integration_method_dict = {
     },
     '3x2pt': {
         'SSC': 'qag_quad',
-        'cNG': 'qag_quad',
+        'cNG': 'spline',
     }
 }
 
+# TODO test if qag_quad works for all cases
+# integration_method_dict = {
+#     'LL': {
+#         'SSC': 'qag_quad',
+#         'cNG': 'qag_quad',
+#     },
+#     'GG': {
+#         'SSC': 'qag_quad',
+#         'cNG': 'qag_quad',
+#     },
+#     '3x2pt': {
+#         'SSC': 'qag_quad',
+#         'cNG': 'qag_quad',
+#     }
+# }
 
 for probe in probes:
     for which_NG in which_NGs:
@@ -345,11 +351,8 @@ for probe in probes:
         print(f'\n****************** settings ****************'
               f'\nprobe = {probe}\nwhich_NG = {which_NG}'
               f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
-              f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}')
-
-        # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
-        # * ok: the check that the matrix symmetric in ell1, ell2 is below
-        # print(f'check: is cov_SSC_{probe}[ell1, ell2, ...] == cov_SSC_{probe}[ell2, ell1, ...]?', np.allclose(cov_6D, np.transpose(cov_6D, (1, 0, 2, 3, 4, 5)), rtol=1e-7, atol=0))
+              f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}'
+              f'\n********************************************')
 
         # ! =============================================== compute covs ===============================================
 
@@ -391,8 +394,13 @@ for probe in probes:
         else:
             raise ValueError('probe must be either LL, GG, or 3x2pt')
 
+        # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
+        # * ok: the check that the matrix symmetric in ell1, ell2 is below
+        print(f'check: is cov_SSC_{probe}[ell1, ell2, ...] == cov_SSC_{probe}[ell2, ell1, ...]?')
+        np.testing.assert_allclose(cov_ng_4D, np.transpose(cov_ng_4D, (1, 0, 2, 3)), rtol=1e-7, atol=0)
+
         if save_covs:
-            output_folder = f'{project_path}/output/covmat/after_script_update'
+            output_folder = f'{project_path}/output/covmat/after_script_update/tkka_is_none_{tkka_is_none}'
             filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
             np.savez_compressed(f'{output_folder}/{filename}_4D.npz', cov_ng_4D)
