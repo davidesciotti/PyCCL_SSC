@@ -153,6 +153,7 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
                                         for ij in tqdm(range(zpairs_AB)))
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
+    # move ell1, ell2 to first 2 axes and expand the last 2 axes to the number of redshift pairs
     cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
 
     return cov_ng
@@ -202,6 +203,7 @@ probes = cfg['probes']
 which_NGs = cfg['which_NGs']
 tkka_is_none = cfg['tkka_is_none']
 save_covs = cfg['save_covs']
+test_against_benchmarks = cfg['test_against_benchmarks']
 hm_recipe = cfg['hm_recipe']
 GL_or_LG = cfg['GL_or_LG']
 ell_min = cfg['ell_min']
@@ -389,24 +391,27 @@ for probe in probes:
                                             output_4D_array=True,
                                             integration_method=integration_method_dict[probe][which_NG])
 
-            cov_ng_2D = mm.cov_4D_to_2D(cov_ng_4D)
 
         else:
             raise ValueError('probe must be either LL, GG, or 3x2pt')
+
+        cov_ng_2D = mm.cov_4D_to_2D(cov_ng_4D)
 
         # ! note that the ordering is such that out[i2, i1] = Cov(ell2[i2], ell[i1]). Transpose 1st 2 dimensions??
         # * ok: the check that the matrix symmetric in ell1, ell2 is below
         print(f'check: is cov_SSC_{probe}[ell1, ell2, ...] == cov_SSC_{probe}[ell2, ell1, ...]?')
         np.testing.assert_allclose(cov_ng_4D, np.transpose(cov_ng_4D, (1, 0, 2, 3)), rtol=1e-7, atol=0)
+        np.testing.assert_allclose(cov_ng_2D, cov_ng_2D.T, rtol=1e-7, atol=0)
 
         if save_covs:
             output_folder = f'{project_path}/output/covmat/after_script_update/tkka_is_none_{tkka_is_none}'
             filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
             np.savez_compressed(f'{output_folder}/{filename}_4D.npz', cov_ng_4D)
-            # cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
+            np.savez_compressed(f'{output_folder}/{filename}_2D.npz', cov_ng_2D)
 
-            # mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
+        if test_against_benchmarks:
+            mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
 assert 1 > 2, 'end of script'
 
