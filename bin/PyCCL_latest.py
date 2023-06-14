@@ -137,17 +137,18 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     # parallel version:
     start_time = time.perf_counter()
     cov_ng = Parallel(
-        n_jobs=-1, backend='threading')(delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
-                                                                                    cltracer1=kernel_A[ind_AB[ij, -2]],
-                                                                                    cltracer2=kernel_B[ind_AB[ij, -1]],
-                                                                                    ell=ell, tkka=tkka,
-                                                                                    sigma2_B=None, fsky=f_sky,
-                                                                                    cltracer3=kernel_C[ind_CD[kl, -2]],
-                                                                                    cltracer4=kernel_D[ind_CD[kl, -1]],
-                                                                                    ell2=None,
-                                                                                    integration_method=integration_method)
-                                        for kl in range(zpairs_CD)
-                                        for ij in tqdm(range(zpairs_AB)))
+        n_jobs=-1, backend='threading')(
+        delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
+                                                    cltracer1=kernel_A[ind_AB[ij, -2]],
+                                                    cltracer2=kernel_B[ind_AB[ij, -1]],
+                                                    ell=ell, tkka=tkka,
+                                                    sigma2_B=None, fsky=f_sky,
+                                                    cltracer3=kernel_C[ind_CD[kl, -2]],
+                                                    cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                    ell2=None,
+                                                    integration_method=integration_method)
+        for kl in range(zpairs_CD)
+        for ij in tqdm(range(zpairs_AB)))
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
@@ -163,16 +164,17 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     # parallel version:
     start_time = time.perf_counter()
     cov_ng = Parallel(
-        n_jobs=-1, backend='threading')(delayed(ccl.covariances.angular_cl_cov_cNG)(cosmo,
-                                                                                    cltracer1=kernel_A[ind_AB[ij, -2]],
-                                                                                    cltracer2=kernel_B[ind_AB[ij, -1]],
-                                                                                    ell=ell, tkka=tkka, fsky=f_sky,
-                                                                                    cltracer3=kernel_C[ind_CD[kl, -2]],
-                                                                                    cltracer4=kernel_D[ind_CD[kl, -1]],
-                                                                                    ell2=None,
-                                                                                    integration_method=integration_method)
-                                        for kl in range(zpairs_CD)
-                                        for ij in tqdm(range(zpairs_AB)))
+        n_jobs=-1, backend='threading')(
+        delayed(ccl.covariances.angular_cl_cov_cNG)(cosmo,
+                                                    tracer1=kernel_A[ind_AB[ij, -2]],
+                                                    tracer2=kernel_B[ind_AB[ij, -1]],
+                                                    ell=ell, t_of_kk_a=tkka, fsky=f_sky,
+                                                    tracer3=kernel_C[ind_CD[kl, -2]],
+                                                    tracer4=kernel_D[ind_CD[kl, -1]],
+                                                    ell2=None,
+                                                    integration_method=integration_method)
+        for kl in range(zpairs_CD)
+        for ij in tqdm(range(zpairs_AB)))
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     # move ell1, ell2 to first 2 axes and expand the last 2 axes to the number of redshift pairs
@@ -181,7 +183,7 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     return cov_ng
 
 
-def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tk3D_dict, f_sky, integration_method,
+def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka_dict, f_sky, integration_method,
                         probe_ordering, ind_dict, output_4D_array=True):
     cov_ng_3x2pt_dict_8D = {}
     for A, B in probe_ordering:
@@ -192,7 +194,7 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tk3D_dict, f_sky, 
                                                            kernel_B=kernel_dict[B],
                                                            kernel_C=kernel_dict[C],
                                                            kernel_D=kernel_dict[D],
-                                                           ell=ell, tkka=tk3D_dict[A, B, C, D], f_sky=f_sky,
+                                                           ell=ell, tkka=tkka_dict[A, B, C, D], f_sky=f_sky,
                                                            ind_AB=ind_dict[A + B],
                                                            ind_CD=ind_dict[C + D],
                                                            integration_method=integration_method)
@@ -302,12 +304,14 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 
 if tkka_is_none:
-    tkka = None
+    tkka_dict = {}
+    for A, B in probe_ordering:
+        for C, D in probe_ordering:
+            tkka_dict[(A, B, C, D)] = None
 elif not tkka_is_none:
-    tkka = initialize_trispectrum(probe_ordering)
+    tkka_dict = initialize_trispectrum(probe_ordering)
 else:
     raise ValueError('tkka_is_none should be True or False')
-
 
 # convenience dictionaries
 ind_dict = {
@@ -401,14 +405,15 @@ for probe in probes:
             cov_ng_4D = ng_function(cosmo_ccl,
                                     kernel_A=kernel_A, kernel_B=kernel_B,
                                     kernel_C=kernel_C, kernel_D=kernel_D,
-                                    ell=ell_grid, tkka=tkka_dict[probe[0], probe[1], probe[0], probe[1]], f_sky=f_sky,
+                                    ell=ell_grid, tkka_dict=tkka_dict[probe[0], probe[1], probe[0], probe[1]],
+                                    f_sky=f_sky,
                                     ind_AB=ind_AB, ind_CD=ind_CD,
                                     integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
             cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
                                             kernel_dict=kernel_dict,
-                                            ell=ell_grid, tkka=tkka_dict, f_sky=f_sky,
+                                            ell=ell_grid, tkka_dict=tkka_dict, f_sky=f_sky,
                                             probe_ordering=probe_ordering,
                                             ind_dict=ind_dict,
                                             output_4D_array=True,
