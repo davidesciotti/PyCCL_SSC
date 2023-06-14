@@ -45,7 +45,7 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 # ======================================================================================================================
 
 
-def initialize_trispectrum():
+def initialize_trispectrum(probe_ordering):
     # ! =============================================== halo model =========================================================
     # TODO we're not sure about the values of Delta and rho_type
     # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
@@ -70,41 +70,63 @@ def initialize_trispectrum():
         raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
 
     # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
-
-    # mass function
     massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
-
-    # halo bias
     hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
 
     # concentration-mass relation
 
     # TODO understand better this object. We're calling the abstract class, is this ok?
     # HMCalculator
-    hmc = ccl.halos.halo_model.HMCalculator(cosmo_ccl, massfunc, hbias, mass_def=mass_def,
-                                            log10M_min=8.0, log10M_max=16.0, nlog10M=128,
-                                            integration_method_M='simpson', k_min=1e-05)
+    # hmc = ccl.halos.halo_model.HMCalculator(cosmo_ccl, massfunc, hbias, mass_def=mass_def,
+    #                                         log10M_min=8.0, log10M_max=16.0, nlog10M=128,
+    #                                         integration_method_M='simpson', k_min=1e-05)
 
     # halo profile
-    halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
-                                                     fourier_analytic=True, projected_analytic=False,
-                                                     cumul2d_analytic=False, truncated=True)
-    # halo_profile = ccl.halos.profiles.HaloProfileHOD(c_M_relation=c_M_relation)
-
+    # halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
+    #                                                  fourier_analytic=True, projected_analytic=False,
+    #                                                  cumul2d_analytic=False, truncated=True)
+    # halo_profile = ccl.halos.profiles.HaloProfileHOD(concentration=c_M_relation, is_number_counts=False)
+    # print(halo_profile.is_number_counts)
     # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
     # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
     # 🐛 bug fixed: normprof shoud be True
     # 🐛 bug fixed?: p_of_k_a=None instead of Pk
 
-    tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
-                                                 prof1=halo_profile, prof2=None, prof12_2pt=None,
-                                                 prof3=None, prof4=None, prof34_2pt=None,
-                                                 normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-                                                 p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
-                                                 extrap_order_hik=1, use_log=False)
-    # assert False, 'should I use HaloProfileHOD for number counts???'  # TODO
+    # tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
+    #                                              prof1=halo_profile, prof2=None, prof12_2pt=None,
+    #                                              prof3=None, prof4=None, prof34_2pt=None,
+    #                                              normprof1=True, normprof2=True, normprof3=True, normprof4=True,
+    #                                              p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
+    #                                              extrap_order_hik=1, use_log=False)
+
+    # ! alternative tk3d_SSC computation, from https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
+    mass_def = ccl.halos.MassDef200m()
+    concentration = ccl.halos.ConcentrationDuffy08(mass_def)
+    halo_mass_func = ccl.halos.MassFuncTinker10(cosmo_ccl, mass_def=mass_def)
+    halo_bias_func = ccl.halos.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def)
+    nfw = ccl.halos.HaloProfileNFW(concentration)
+    hod = ccl.halos.HaloProfileHOD(concentration, is_number_counts=True)
+    hm_calculator = ccl.halos.HMCalculator(cosmo_ccl, halo_mass_func, halo_bias_func, mass_def)
+
+    halo_profile_dict = {
+        'L': nfw,
+        'G': hod,
+    }
+    tkka_dict = {}
+    for A, B in probe_ordering:
+        for C, D in probe_ordering:
+            tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
+                                                               prof1=halo_profile_dict[A],
+                                                               prof2=halo_profile_dict[B],
+                                                               prof3=halo_profile_dict[C],
+                                                               prof4=halo_profile_dict[D],
+                                                               prof12_2pt=None, prof34_2pt=None,
+                                                               normprof1=True, normprof2=True,
+                                                               normprof3=True, normprof4=True,
+                                                               lk_arr=None, a_arr=None, p_of_k_a=None)
+
     print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - halomod_start_time))
-    return tkka
+    return tkka_dict
 
 
 def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
@@ -159,7 +181,7 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     return cov_ng
 
 
-def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integration_method,
+def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tk3D_dict, f_sky, integration_method,
                         probe_ordering, ind_dict, output_4D_array=True):
     cov_ng_3x2pt_dict_8D = {}
     for A, B in probe_ordering:
@@ -170,7 +192,7 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integ
                                                            kernel_B=kernel_dict[B],
                                                            kernel_C=kernel_dict[C],
                                                            kernel_D=kernel_dict[D],
-                                                           ell=ell, tkka=tkka, f_sky=f_sky,
+                                                           ell=ell, tkka=tk3D_dict[A, B, C, D], f_sky=f_sky,
                                                            ind_AB=ind_dict[A + B],
                                                            ind_CD=ind_dict[C + D],
                                                            integration_method=integration_method)
@@ -276,15 +298,16 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
 # Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
 
+# covariance ordering stuff
+probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
+
 if tkka_is_none:
     tkka = None
 elif not tkka_is_none:
-    tkka = initialize_trispectrum()
+    tkka = initialize_trispectrum(probe_ordering)
 else:
     raise ValueError('tkka_is_none should be True or False')
 
-# covariance ordering stuff
-probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 
 # convenience dictionaries
 ind_dict = {
@@ -378,20 +401,18 @@ for probe in probes:
             cov_ng_4D = ng_function(cosmo_ccl,
                                     kernel_A=kernel_A, kernel_B=kernel_B,
                                     kernel_C=kernel_C, kernel_D=kernel_D,
-                                    ell=ell_grid, tkka=tkka, f_sky=f_sky,
+                                    ell=ell_grid, tkka=tkka_dict[probe[0], probe[1], probe[0], probe[1]], f_sky=f_sky,
                                     ind_AB=ind_AB, ind_CD=ind_CD,
                                     integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
             cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
                                             kernel_dict=kernel_dict,
-                                            ell=ell_grid, tkka=tkka, f_sky=f_sky,
+                                            ell=ell_grid, tkka=tkka_dict, f_sky=f_sky,
                                             probe_ordering=probe_ordering,
                                             ind_dict=ind_dict,
                                             output_4D_array=True,
                                             integration_method=integration_method_dict[probe][which_NG])
-
-
         else:
             raise ValueError('probe must be either LL, GG, or 3x2pt')
 
