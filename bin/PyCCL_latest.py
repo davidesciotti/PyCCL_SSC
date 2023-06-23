@@ -70,47 +70,23 @@ def initialize_trispectrum(probe_ordering):
         raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
 
     # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
-    massfunc = ccl.halos.hmfunc.MassFuncTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
-    hbias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def, mass_def_strict=True)
-
-    # concentration-mass relation
-
-    # TODO understand better this object. We're calling the abstract class, is this ok?
-    # HMCalculator
-    # hmc = ccl.halos.halo_model.HMCalculator(cosmo_ccl, massfunc, hbias, mass_def=mass_def,
-    #                                         log10M_min=8.0, log10M_max=16.0, nlog10M=128,
-    #                                         integration_method_M='simpson', k_min=1e-05)
-
-    # halo profile
-    # halo_profile = ccl.halos.profiles.HaloProfileNFW(c_M_relation=c_M_relation,
-    #                                                  fourier_analytic=True, projected_analytic=False,
-    #                                                  cumul2d_analytic=False, truncated=True)
-    # halo_profile = ccl.halos.profiles.HaloProfileHOD(concentration=c_M_relation, is_number_counts=False)
-    # print(halo_profile.is_number_counts)
     # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
     # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
     # 🐛 bug fixed: normprof shoud be True
     # 🐛 bug fixed?: p_of_k_a=None instead of Pk
-
-    # tkka = ccl.halos.halo_model.halomod_Tk3D_SSC(cosmo_ccl, hmc,
-    #                                              prof1=halo_profile, prof2=None, prof12_2pt=None,
-    #                                              prof3=None, prof4=None, prof34_2pt=None,
-    #                                              normprof1=True, normprof2=True, normprof3=True, normprof4=True,
-    #                                              p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
-    #                                              extrap_order_hik=1, use_log=False)
 
     # ! alternative tk3d_SSC computation, from https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
     mass_def = ccl.halos.MassDef200m()
     concentration = ccl.halos.ConcentrationDuffy08(mass_def)
     halo_mass_func = ccl.halos.MassFuncTinker10(cosmo_ccl, mass_def=mass_def)
     halo_bias_func = ccl.halos.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def)
-    nfw = ccl.halos.HaloProfileNFW(concentration)
-    hod = ccl.halos.HaloProfileHOD(concentration, is_number_counts=True)
-    hm_calculator = ccl.halos.HMCalculator(cosmo_ccl, halo_mass_func, halo_bias_func, mass_def)
+    halo_profile_nfw = ccl.halos.HaloProfileNFW(concentration)
+    halo_profile_hod = ccl.halos.HaloProfileHOD(concentration, is_number_counts=True)
+    hm_calculator = ccl.halos.HMCalculator(cosmo_ccl, halo_mass_func, halo_bias_func, mass_def=mass_def)
 
     halo_profile_dict = {
-        'L': nfw,
-        'G': hod,
+        'L': halo_profile_nfw,
+        'G': halo_profile_hod,
     }
     tkka_dict = {}
     for A, B in probe_ordering:
