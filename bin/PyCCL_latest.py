@@ -45,43 +45,17 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 # ======================================================================================================================
 
 
-def initialize_trispectrum(probe_ordering):
-    # ! =============================================== halo model =========================================================
-    # TODO we're not sure about the values of Delta and rho_type
-    # mass_def = ccl.halos.massdef.MassDef(Delta='vir', rho_type='matter', c_m_relation=name)
-    # from https://ccl.readthedocs.io/en/latest/api/pyccl.halos.massdef.html?highlight=.halos.massdef.MassDef#pyccl.halos.massdef.MassDef200c
-
-    # HALO MODEL PRESCRIPTIONS:
-    # KiDS1000 Methodology: https://www.pure.ed.ac.uk/ws/portalfiles/portal/188893969/2007.01844v2.pdf, after (E.10)
-    # Krause2017: https://arxiv.org/pdf/1601.05779.pdf
-    # about the mass definition, the paper says:
-    # "Throughout this paper we define halo properties using the over density ∆ = 200 ¯ρ, with ¯ρ the mean matter density"
+def initialize_trispectrum_SSC(probe_ordering, use_linear_bias):
     halomod_start_time = time.perf_counter()
-    # mass definition
-    if hm_recipe == 'KiDS1000':  # arXiv:2007.01844
-        c_m = 'Duffy08'  # ! NOT SURE ABOUT THIS
-        mass_def = ccl.halos.MassDef200m(c_m=c_m)
-        c_M_relation = ccl.halos.concentration.ConcentrationDuffy08(mdef=mass_def)
-    elif hm_recipe == 'Krause2017':  # arXiv:1601.05779
-        c_m = 'Bhattacharya13'  # see paper, after Eq. 1
-        mass_def = ccl.halos.MassDef200m(c_m=c_m)
-        c_M_relation = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=mass_def)  # above Eq. 12
-    else:
-        raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
 
-    # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
-    # it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
-    # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
-    # 🐛 bug fixed: normprof shoud be True
-    # 🐛 bug fixed?: p_of_k_a=None instead of Pk
-
-    # ! alternative tk3d_SSC computation, from https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
-    mass_def = ccl.halos.MassDef200m()
+    # ! tk3d_SSC computation, from
+    # ! https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
+    mass_def = ccl.halos.MassDef200m()  # default is (c_m = 'Duffy08')
     concentration = ccl.halos.ConcentrationDuffy08(mass_def)
     halo_mass_func = ccl.halos.MassFuncTinker10(cosmo_ccl, mass_def=mass_def)
     halo_bias_func = ccl.halos.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def)
     halo_profile_nfw = ccl.halos.HaloProfileNFW(concentration)
-    halo_profile_hod = ccl.halos.HaloProfileHOD(concentration, is_number_counts=True)
+    halo_profile_hod = ccl.halos.HaloProfileHOD(concentration)  # default has is_number_counts=True
     hm_calculator = ccl.halos.HMCalculator(cosmo_ccl, halo_mass_func, halo_bias_func, mass_def=mass_def)
 
     halo_profile_dict = {
@@ -92,28 +66,41 @@ def initialize_trispectrum(probe_ordering):
     # TODO finish this; what should I use for GL?
     prof_2pt_dict = {
         ('L', 'L'): None,
+        ('G', 'L'): None,  # ! is this correct?
         ('G', 'G'): ccl.halos.Profile2ptHOD(),
     }
+    tkka_dict_SSC = {}
 
+    # 🐛 bug fixed: it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
+    # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
+    # 🐛 bug fixed: normprof shoud be True
+    if not use_linear_bias:
+        for A, B in probe_ordering:
+            for C, D in probe_ordering:
+                tkka_dict_SSC[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
+                                                                       prof1=halo_profile_dict[A],
+                                                                       prof2=halo_profile_dict[B],
+                                                                       prof3=halo_profile_dict[C],
+                                                                       prof4=halo_profile_dict[D],
+                                                                       prof12_2pt=prof_2pt_dict[A, B],
+                                                                       prof34_2pt=prof_2pt_dict[C, D],
+                                                                       normprof1=True, normprof2=True,
+                                                                       normprof3=True, normprof4=True,
+                                                                       lk_arr=None, a_arr=None, p_of_k_a=None)
+
+    # TODO finish this, insert the linear bias values and better understand the prof argument
+    # TODO tkka for cNG
+    elif use_linear_bias:
+        raise NotImplementedError('halomod_Tk3D_SSC_linear_bias not implemented yet')
+
+    else:
+        raise ValueError('use_linear_bias must be either True or False')
+
+    """
     tkka_dict_SSC = {}
     for A, B in probe_ordering:
         for C, D in probe_ordering:
-            tkka_dict_SSC[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                                                   prof1=halo_profile_dict[A],
-                                                                   prof2=halo_profile_dict[B],
-                                                                   prof3=halo_profile_dict[C],
-                                                                   prof4=halo_profile_dict[D],
-                                                                   prof12_2pt=None, prof34_2pt=None,
-                                                                   normprof1=True, normprof2=True,
-                                                                   normprof3=True, normprof4=True,
-                                                                   lk_arr=None, a_arr=None, p_of_k_a=None)
-
-    # TODO finish this, insert the linear bias values and better understand the prof argument
-    """
-    tkka_dict_SSC_lin_bias = {}
-    for A, B in probe_ordering:
-        for C, D in probe_ordering:
-            tkka_dict_SSC_lin_bias[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC_linear_bias(cosmo=cosmo_ccl,
+            tkka_dict_SSC[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC_linear_bias(cosmo=cosmo_ccl,
                                                                                         hmc=hm_calculator,
                                                                                         prof=...,
                                                                                         bias1=1,
@@ -230,7 +217,6 @@ probes = cfg['probes']
 which_NGs = cfg['which_NGs']
 save_covs = cfg['save_covs']
 test_against_benchmarks = cfg['test_against_benchmarks']
-hm_recipe = cfg['hm_recipe']
 GL_or_LG = cfg['GL_or_LG']
 ell_min = cfg['ell_min']
 ell_max = cfg['ell_max']
@@ -305,8 +291,6 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 
-tkka_dict_SSC = initialize_trispectrum(probe_ordering)
-
 # convenience dictionaries
 ind_dict = {
     'LL': ind_auto,
@@ -374,15 +358,17 @@ for probe in probes:
         print(f'\n****************** settings ****************'
               f'\nprobe = {probe}\nwhich_NG = {which_NG}'
               f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
-              f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}\nhm_recipe = {hm_recipe}'
+              f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}'
               f'\n********************************************')
 
         # ! =============================================== compute covs ===============================================
 
         if which_NG == 'SSC':
             ng_function = compute_cov_SSC_ccl
+            tkka_dict = initialize_trispectrum_SSC(probe_ordering, use_linear_bias=False)
         elif which_NG == 'cNG':
             ng_function = compute_cov_cNG_ccl
+            raise NotImplementedError('tkka_dict not implemented for cNG yet')
         else:
             raise ValueError('which_NG must be either SSC or cNG')
 
@@ -424,8 +410,8 @@ for probe in probes:
         np.testing.assert_allclose(cov_ng_2D, cov_ng_2D.T, rtol=1e-7, atol=0)
 
         if save_covs:
-            output_folder = f'{project_path}/output/covmat/after_script_update/tkka_is_none_{tkka_is_none}'
-            filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}_HMrecipe{hm_recipe}'
+            output_folder = f'{project_path}/output/covmat/after_script_update}'
+            filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}'
 
             np.savez_compressed(f'{output_folder}/{filename}_4D.npz', cov_ng_4D)
             np.savez_compressed(f'{output_folder}/{filename}_2D.npz', cov_ng_2D)
