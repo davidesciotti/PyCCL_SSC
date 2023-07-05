@@ -45,7 +45,9 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 # ======================================================================================================================
 
 
-def initialize_trispectrum_SSC(probe_ordering, use_linear_bias):
+def initialize_trispectrum(probe_ordering, which_tkka):
+    assert which_tkka in ('SSC', 'SSC_linear_bias', 'cNG')
+
     halomod_start_time = time.perf_counter()
 
     # ! tk3d_SSC computation, from
@@ -69,54 +71,71 @@ def initialize_trispectrum_SSC(probe_ordering, use_linear_bias):
         ('G', 'L'): None,  # ! is this correct?
         ('G', 'G'): ccl.halos.Profile2ptHOD(),
     }
-    tkka_dict_SSC = {}
+    tkka_dict = {}
 
     # 🐛 bug fixed: it was p_of_k_a=Pk, but it should use the LINEAR power spectrum, so we leave it as None (see documentation:
     # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
     # 🐛 bug fixed: normprof shoud be True
-    if not use_linear_bias:
+    if which_tkka == 'SSC':
         for A, B in probe_ordering:
             for C, D in probe_ordering:
-                tkka_dict_SSC[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                                                       prof1=halo_profile_dict[A],
-                                                                       prof2=halo_profile_dict[B],
-                                                                       prof3=halo_profile_dict[C],
-                                                                       prof4=halo_profile_dict[D],
-                                                                       prof12_2pt=prof_2pt_dict[A, B],
-                                                                       prof34_2pt=prof_2pt_dict[C, D],
-                                                                       normprof1=True, normprof2=True,
-                                                                       normprof3=True, normprof4=True,
-                                                                       lk_arr=None, a_arr=None, p_of_k_a=None)
+                print(f'Computing tkka for {A}{B}{C}{D}')
+                tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
+                                                                   prof1=halo_profile_dict[A],
+                                                                   prof2=halo_profile_dict[B],
+                                                                   prof3=halo_profile_dict[C],
+                                                                   prof4=halo_profile_dict[D],
+                                                                   prof12_2pt=None,
+                                                                   prof34_2pt=None,
+                                                                   # prof12_2pt=prof_2pt_dict[A, B],
+                                                                   # prof34_2pt=prof_2pt_dict[C, D],
+                                                                   normprof1=True, normprof2=True,
+                                                                   normprof3=True, normprof4=True,
+                                                                   lk_arr=None, a_arr=None, p_of_k_a=None)
 
     # TODO finish this, insert the linear bias values and better understand the prof argument
     # TODO tkka for cNG
-    elif use_linear_bias:
+    if which_tkka == 'SSC_linear_bias':
         raise NotImplementedError('halomod_Tk3D_SSC_linear_bias not implemented yet')
 
-    else:
-        raise ValueError('use_linear_bias must be either True or False')
+        """
+        tkka_dict = {}
+        for A, B in probe_ordering:
+            for C, D in probe_ordering:
+                tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC_linear_bias(cosmo=cosmo_ccl,
+                                                                                            hmc=hm_calculator,
+                                                                                            prof=...,
+                                                                                            bias1=1,
+                                                                                            bias2=1, bias3=1, bias4=1,
+                                                                                            is_number_counts1=False,
+                                                                                            is_number_counts2=False,
+                                                                                            is_number_counts3=False,
+                                                                                            is_number_counts4=False,
+                                                                                            p_of_k_a=None, lk_arr=None,
+                                                                                            a_arr=None, extrap_order_lok=1,
+                                                                                            extrap_order_hik=1,
+                                                                                            use_log=False)
+        """
 
-    """
-    tkka_dict_SSC = {}
-    for A, B in probe_ordering:
-        for C, D in probe_ordering:
-            tkka_dict_SSC[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC_linear_bias(cosmo=cosmo_ccl,
-                                                                                        hmc=hm_calculator,
-                                                                                        prof=...,
-                                                                                        bias1=1,
-                                                                                        bias2=1, bias3=1, bias4=1,
-                                                                                        is_number_counts1=False,
-                                                                                        is_number_counts2=False,
-                                                                                        is_number_counts3=False,
-                                                                                        is_number_counts4=False,
-                                                                                        p_of_k_a=None, lk_arr=None,
-                                                                                        a_arr=None, extrap_order_lok=1,
-                                                                                        extrap_order_hik=1,
-                                                                                        use_log=False)
-    """
+    elif which_tkka == 'cNG':
+        for A, B in probe_ordering:
+            for C, D in probe_ordering:
+                tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_1h(cosmo=cosmo_ccl, hmc=hm_calculator,
+                                                                  prof1=halo_profile_dict[A],
+                                                                  prof2=halo_profile_dict[B],
+                                                                  prof3=halo_profile_dict[C],
+                                                                  prof4=halo_profile_dict[D],
+                                                                  prof12_2pt=prof_2pt_dict[A, B],
+                                                                  prof34_2pt=prof_2pt_dict[C, D],
+                                                                  normprof1=True,
+                                                                  normprof2=True,
+                                                                  normprof3=True,
+                                                                  normprof4=True,
+                                                                  lk_arr=None, a_arr=None,
+                                                                  use_log=False)
 
     print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - halomod_start_time))
-    return tkka_dict_SSC
+    return tkka_dict
 
 
 def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
@@ -224,7 +243,6 @@ nbl = cfg['nbl']
 zbins = cfg['zbins']
 triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
-use_ray = cfg['use_ray']  # TODO finish this!
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 n_samples_wf = cfg['n_samples_wf']
@@ -294,8 +312,8 @@ probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 # convenience dictionaries
 ind_dict = {
     'LL': ind_auto,
+    'GL': ind_cross,
     'GG': ind_auto,
-    'GL': ind_cross
 }
 
 probe_idx_dict = {
@@ -365,10 +383,11 @@ for probe in probes:
 
         if which_NG == 'SSC':
             ng_function = compute_cov_SSC_ccl
-            tkka_dict = initialize_trispectrum_SSC(probe_ordering, use_linear_bias=False)
+            tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='SSC')
         elif which_NG == 'cNG':
             ng_function = compute_cov_cNG_ccl
             raise NotImplementedError('tkka_dict not implemented for cNG yet')
+            tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='SSC')
         else:
             raise ValueError('which_NG must be either SSC or cNG')
 
@@ -410,7 +429,7 @@ for probe in probes:
         np.testing.assert_allclose(cov_ng_2D, cov_ng_2D.T, rtol=1e-7, atol=0)
 
         if save_covs:
-            output_folder = f'{project_path}/output/covmat/after_script_update}'
+            output_folder = f'{project_path}/output/covmat/after_script_update'
             filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}'
 
             np.savez_compressed(f'{output_folder}/{filename}_4D.npz', cov_ng_4D)
