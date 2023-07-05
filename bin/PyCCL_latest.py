@@ -88,21 +88,48 @@ def initialize_trispectrum(probe_ordering):
         'L': halo_profile_nfw,
         'G': halo_profile_hod,
     }
-    tkka_dict = {}
+
+    # TODO finish this; what should I use for GL?
+    prof_2pt_dict = {
+        ('L', 'L'): None,
+        ('G', 'G'): ccl.halos.Profile2ptHOD(),
+    }
+
+    tkka_dict_SSC = {}
     for A, B in probe_ordering:
         for C, D in probe_ordering:
-            tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                                               prof1=halo_profile_dict[A],
-                                                               prof2=halo_profile_dict[B],
-                                                               prof3=halo_profile_dict[C],
-                                                               prof4=halo_profile_dict[D],
-                                                               prof12_2pt=None, prof34_2pt=None,
-                                                               normprof1=True, normprof2=True,
-                                                               normprof3=True, normprof4=True,
-                                                               lk_arr=None, a_arr=None, p_of_k_a=None)
+            tkka_dict_SSC[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
+                                                                   prof1=halo_profile_dict[A],
+                                                                   prof2=halo_profile_dict[B],
+                                                                   prof3=halo_profile_dict[C],
+                                                                   prof4=halo_profile_dict[D],
+                                                                   prof12_2pt=None, prof34_2pt=None,
+                                                                   normprof1=True, normprof2=True,
+                                                                   normprof3=True, normprof4=True,
+                                                                   lk_arr=None, a_arr=None, p_of_k_a=None)
+
+    # TODO finish this, insert the linear bias values and better understand the prof argument
+    """
+    tkka_dict_SSC_lin_bias = {}
+    for A, B in probe_ordering:
+        for C, D in probe_ordering:
+            tkka_dict_SSC_lin_bias[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC_linear_bias(cosmo=cosmo_ccl,
+                                                                                        hmc=hm_calculator,
+                                                                                        prof=...,
+                                                                                        bias1=1,
+                                                                                        bias2=1, bias3=1, bias4=1,
+                                                                                        is_number_counts1=False,
+                                                                                        is_number_counts2=False,
+                                                                                        is_number_counts3=False,
+                                                                                        is_number_counts4=False,
+                                                                                        p_of_k_a=None, lk_arr=None,
+                                                                                        a_arr=None, extrap_order_lok=1,
+                                                                                        extrap_order_hik=1,
+                                                                                        use_log=False)
+    """
 
     print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - halomod_start_time))
-    return tkka_dict
+    return tkka_dict_SSC
 
 
 def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
@@ -201,7 +228,6 @@ ell_grid_recipe = cfg['ell_grid_recipe']
 sky_area_deg2 = cfg['sky_area_deg2']
 probes = cfg['probes']
 which_NGs = cfg['which_NGs']
-tkka_is_none = cfg['tkka_is_none']
 save_covs = cfg['save_covs']
 test_against_benchmarks = cfg['test_against_benchmarks']
 hm_recipe = cfg['hm_recipe']
@@ -279,15 +305,7 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 
-if tkka_is_none:
-    tkka_dict = {}
-    for A, B in probe_ordering:
-        for C, D in probe_ordering:
-            tkka_dict[(A, B, C, D)] = None
-elif not tkka_is_none:
-    tkka_dict = initialize_trispectrum(probe_ordering)
-else:
-    raise ValueError('tkka_is_none should be True or False')
+tkka_dict_SSC = initialize_trispectrum(probe_ordering)
 
 # convenience dictionaries
 ind_dict = {
