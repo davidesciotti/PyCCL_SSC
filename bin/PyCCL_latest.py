@@ -52,6 +52,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
 
     # ! tk3d_SSC computation, from
     # ! https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
+    # ! see also https://github.com/LSSTDESC/CCLX/blob/master/Halo-model-Pk.ipynb
     mass_def = ccl.halos.MassDef200m()  # default is (c_m = 'Duffy08')
     concentration = ccl.halos.ConcentrationDuffy08(mass_def)
     halo_mass_func = ccl.halos.MassFuncTinker10(cosmo_ccl, mass_def=mass_def)
@@ -64,11 +65,12 @@ def initialize_trispectrum(probe_ordering, which_tkka):
         'L': halo_profile_nfw,
         'G': halo_profile_hod,
     }
+    # FIXME GGLL and GGGL don't work... why?
 
-    # TODO finish this; what should I use for GL?
     prof_2pt_dict = {
-        ('L', 'L'): None,
-        ('G', 'L'): None,  # ! is this correct?
+        ('L', 'L'): ccl.halos.Profile2pt(),
+        ('G', 'L'): ccl.halos.Profile2pt(),
+        # see again https://github.com/LSSTDESC/CCLX/blob/master/Halo-model-Pk.ipynb
         ('G', 'G'): ccl.halos.Profile2ptHOD(),
     }
     tkka_dict = {}
@@ -85,10 +87,10 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                    prof2=halo_profile_dict[B],
                                                                    prof3=halo_profile_dict[C],
                                                                    prof4=halo_profile_dict[D],
-                                                                   prof12_2pt=None,
-                                                                   prof34_2pt=None,
-                                                                   # prof12_2pt=prof_2pt_dict[A, B],
-                                                                   # prof34_2pt=prof_2pt_dict[C, D],
+                                                                   # prof12_2pt=None,
+                                                                   # prof34_2pt=None,
+                                                                   prof12_2pt=prof_2pt_dict[A, B],
+                                                                   prof34_2pt=prof_2pt_dict[C, D],
                                                                    normprof1=True, normprof2=True,
                                                                    normprof3=True, normprof4=True,
                                                                    lk_arr=None, a_arr=None, p_of_k_a=None)
@@ -120,6 +122,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     elif which_tkka == 'cNG':
         for A, B in probe_ordering:
             for C, D in probe_ordering:
+                print(f'Computing tkka {which_tkka} for {A}{B}{C}{D}')
                 tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_1h(cosmo=cosmo_ccl, hmc=hm_calculator,
                                                                   prof1=halo_profile_dict[A],
                                                                   prof2=halo_profile_dict[B],
@@ -145,8 +148,7 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
     # parallel version:
     start_time = time.perf_counter()
-    cov_ng = Parallel(
-        n_jobs=-1, backend='threading')(
+    cov_ng = Parallel(n_jobs=-1, backend='threading')(
         delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
                                                     cltracer1=kernel_A[ind_AB[ij, -2]],
                                                     cltracer2=kernel_B[ind_AB[ij, -1]],
@@ -250,6 +252,8 @@ get_3xtpt_cov_in_4D = cfg['get_3xtpt_cov_in_4D']
 bias_model = cfg['bias_model']
 # ! settings
 
+# which_NGs = ('cNG',)
+
 # ======================================================================================================================
 # ======================================================================================================================
 # ======================================================================================================================
@@ -340,22 +344,8 @@ integration_method_dict = {
         'cNG': 'spline',
     }
 }
-
 # TODO test if qag_quad works for all cases
-# integration_method_dict = {
-#     'LL': {
-#         'SSC': 'qag_quad',
-#         'cNG': 'qag_quad',
-#     },
-#     'GG': {
-#         'SSC': 'qag_quad',
-#         'cNG': 'qag_quad',
-#     },
-#     '3x2pt': {
-#         'SSC': 'qag_quad',
-#         'cNG': 'qag_quad',
-#     }
-# }
+# integration_method_dict = {ket: qag_quad for key in keys()} (pseudocode)
 
 for probe in probes:
     for which_NG in which_NGs:
@@ -386,8 +376,7 @@ for probe in probes:
             tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='SSC')
         elif which_NG == 'cNG':
             ng_function = compute_cov_cNG_ccl
-            raise NotImplementedError('tkka_dict not implemented for cNG yet')
-            tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='SSC')
+            tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='cNG')
         else:
             raise ValueError('which_NG must be either SSC or cNG')
 
