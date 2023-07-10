@@ -11,23 +11,14 @@ import numpy as np
 import pyccl as ccl
 import yaml
 from joblib import Parallel, delayed
-from scipy.special import erf
 import ray
 from tqdm import tqdm
-
-ray.shutdown()
-ray.init()
 
 # get project directory adn import useful modules
 project_path = Path.cwd().parent
 
 sys.path.append(f'../../common_lib_and_cfg/common_lib')
 import my_module as mm
-import cosmo_lib
-
-sys.path.append(f'../../common_lib_and_cfg/common_config')
-import ISTF_fid_params as ISTF_fid
-import mpl_cfg
 
 sys.path.append(f'../../SSC_restructured_v2/bin')
 import ell_values as ell_utils
@@ -37,7 +28,9 @@ import wf_cl_lib
 
 matplotlib.use('Qt5Agg')
 start_time = time.perf_counter()
-plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
+
+
+# plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 
 
 # ======================================================================================================================
@@ -65,7 +58,6 @@ def initialize_trispectrum(probe_ordering, which_tkka):
         'L': halo_profile_nfw,
         'G': halo_profile_hod,
     }
-    # FIXME GGLL and GGGL don't work... why?
 
     prof_2pt_dict = {
         ('L', 'L'): ccl.halos.Profile2pt(),
@@ -87,8 +79,6 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                    prof2=halo_profile_dict[B],
                                                                    prof3=halo_profile_dict[C],
                                                                    prof4=halo_profile_dict[D],
-                                                                   # prof12_2pt=None,
-                                                                   # prof34_2pt=None,
                                                                    prof12_2pt=prof_2pt_dict[A, B],
                                                                    prof34_2pt=prof_2pt_dict[C, D],
                                                                    normprof1=True, normprof2=True,
@@ -148,7 +138,7 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
     # parallel version:
     start_time = time.perf_counter()
-    cov_ng = Parallel(n_jobs=-1, backend='threading')(
+    cov_ssc = Parallel(n_jobs=-1, backend='threading')(
         delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
                                                     cltracer1=kernel_A[ind_AB[ij, -2]],
                                                     cltracer2=kernel_B[ind_AB[ij, -1]],
@@ -162,9 +152,9 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
         for ij in tqdm(range(zpairs_AB)))
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
-    cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
+    cov_ssc = np.array(cov_ssc).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
 
-    return cov_ng
+    return cov_ssc
 
 
 def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
@@ -174,7 +164,7 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
     # parallel version:
     start_time = time.perf_counter()
-    cov_ng = Parallel(
+    cov_cng = Parallel(
         n_jobs=-1, backend='threading')(
         delayed(ccl.covariances.angular_cl_cov_cNG)(cosmo,
                                                     tracer1=kernel_A[ind_AB[ij, -2]],
@@ -189,9 +179,9 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     # move ell1, ell2 to first 2 axes and expand the last 2 axes to the number of redshift pairs
-    cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
+    cov_cng = np.array(cov_cng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
 
-    return cov_ng
+    return cov_cng
 
 
 def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka_dict, f_sky, integration_method,
