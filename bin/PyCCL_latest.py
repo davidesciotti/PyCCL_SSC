@@ -69,7 +69,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     if which_tkka == 'SSC':
         for A, B in probe_ordering:
             for C, D in probe_ordering:
-                print(f'Computing tkka for {A}{B}{C}{D}')
+                print(f'Computing tkka {which_tkka} for {A}{B}{C}{D}')
                 tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
                                                                    prof1=halo_profile_dict[A],
                                                                    prof2=halo_profile_dict[B],
@@ -79,10 +79,9 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                    prof34_2pt=prof_2pt_dict[C, D],
                                                                    normprof1=True, normprof2=True,
                                                                    normprof3=True, normprof4=True,
-                                                                   lk_arr=None, a_arr=None, p_of_k_a=None)
+                                                                   lk_arr=None, a_arr=a_grid_increasing, p_of_k_a=None)
 
     # TODO finish this, insert the linear bias values and better understand the prof argument
-    # TODO tkka for cNG
     if which_tkka == 'SSC_linear_bias':
         raise NotImplementedError('halomod_Tk3D_SSC_linear_bias not implemented yet')
 
@@ -90,21 +89,25 @@ def initialize_trispectrum(probe_ordering, which_tkka):
         tkka_dict = {}
         for A, B in probe_ordering:
             for C, D in probe_ordering:
+                print(f'Computing tkka {which_tkka} for {A}{B}{C}{D}')
                 tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC_linear_bias(cosmo=cosmo_ccl,
                                                                                             hmc=hm_calculator,
                                                                                             prof=...,
                                                                                             bias1=1,
-                                                                                            bias2=1, bias3=1, bias4=1,
+                                                                                            bias2=1, 
+                                                                                            bias3=1, 
+                                                                                            bias4=1,
                                                                                             is_number_counts1=False,
                                                                                             is_number_counts2=False,
                                                                                             is_number_counts3=False,
                                                                                             is_number_counts4=False,
                                                                                             p_of_k_a=None, lk_arr=None,
-                                                                                            a_arr=None, extrap_order_lok=1,
+                                                                                            a_arr=a_grid_increasing, extrap_order_lok=1,
                                                                                             extrap_order_hik=1,
                                                                                             use_log=False)
         """
 
+    # TODO test tkka for cNG
     elif which_tkka == 'cNG':
         for A, B in probe_ordering:
             for C, D in probe_ordering:
@@ -120,7 +123,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                   normprof2=True,
                                                                   normprof3=True,
                                                                   normprof4=True,
-                                                                  lk_arr=None, a_arr=None,
+                                                                  lk_arr=None, a_arr=a_grid_increasing,
                                                                   use_log=False)
 
     print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - halomod_start_time))
@@ -215,8 +218,8 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka_dict, f_sky, 
 
 
 # ! settings
-# with open('../../exact_SSC/config/config_exactSSC.yml') as f:
-with open('../config/config_exactSSC.yml') as f:
+with open('../../exact_SSC/config/cfg_exactSSC.yml') as f:
+    # with open('../config/cfg_exactSSC_here.yml') as f:
     cfg = yaml.safe_load(f)
 
 ell_grid_recipe = cfg['ell_grid_recipe']
@@ -233,6 +236,8 @@ zbins = cfg['zbins']
 triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
+a_grid_increasing = (1 / (1 + z_grid))[::-1][::5]
+warnings.warn('increase the number of points in the grid, for now Im only testing if this works')
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 n_samples_wf = cfg['n_samples_wf']
 get_3xtpt_cov_in_4D = cfg['get_3xtpt_cov_in_4D']
