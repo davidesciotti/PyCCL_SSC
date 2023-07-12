@@ -137,6 +137,7 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
     # parallel version:
     start_time = time.perf_counter()
+
     cov_ssc = Parallel(n_jobs=-1, backend='threading')(
         delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
                                                     cltracer1=kernel_A[ind_AB[ij, -2]],
@@ -147,8 +148,9 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
                                                     cltracer4=kernel_D[ind_CD[kl, -1]],
                                                     ell2=None,
                                                     integration_method=integration_method)
-        for kl in range(zpairs_CD)
-        for ij in tqdm(range(zpairs_AB)))
+        for kl in tqdm(range(zpairs_CD))
+        for ij in range(zpairs_AB))
+
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     cov_ssc = np.array(cov_ssc).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
@@ -173,8 +175,8 @@ def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
                                                     tracer4=kernel_D[ind_CD[kl, -1]],
                                                     ell2=None,
                                                     integration_method=integration_method)
-        for kl in range(zpairs_CD)
-        for ij in tqdm(range(zpairs_AB)))
+        for kl in tqdm(range(zpairs_CD))
+        for ij in range(zpairs_AB))
     print(f'parallel version took {(time.perf_counter() - start_time):.2f} s')
 
     # move ell1, ell2 to first 2 axes and expand the last 2 axes to the number of redshift pairs
@@ -236,7 +238,7 @@ zbins = cfg['zbins']
 triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
-a_grid_increasing = (1 / (1 + z_grid))[::-1][::5]
+a_grid_increasing = (1 / (1 + z_grid))[::-1][::6]
 warnings.warn('increase the number of points in the grid, for now Im only testing if this works')
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 n_samples_wf = cfg['n_samples_wf']
