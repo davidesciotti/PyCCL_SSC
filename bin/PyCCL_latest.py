@@ -32,7 +32,7 @@ import mpl_cfg
 sys.path.append(f'../../SSC_restructured_v2/bin')
 import ell_values as ell_utils
 
-sys.path.append(f'../../cl_v2/lib')
+sys.path.append(f'../../cl_v2/bin')
 import wf_cl_lib
 
 matplotlib.use('Qt5Agg')
@@ -101,7 +101,7 @@ def initialize_trispectrum():
                                                  normprof1=True, normprof2=True, normprof3=True, normprof4=True,
                                                  p_of_k_a=None, lk_arr=None, a_arr=None, extrap_order_lok=1,
                                                  extrap_order_hik=1, use_log=False)
-    assert False, 'should I use HaloProfileHOD for number counts???'  # TODO
+    # assert False, 'should I use HaloProfileHOD for number counts???'  # TODO
     print('trispectrum computed in {:.2f} seconds'.format(time.perf_counter() - halomod_start_time))
     return tkka
 
@@ -193,7 +193,7 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka, f_sky, integ
 
 
 # ! settings
-with open('../../exact_SSC/config/config.yml') as f:
+with open('../../exact_SSC/config/cfg_exactSSC_ISTF.yml') as f:
     cfg = yaml.safe_load(f)
 
 ell_grid_recipe = cfg['ell_grid_recipe']
@@ -201,7 +201,7 @@ sky_area_deg2 = cfg['sky_area_deg2']
 probes = cfg['probes']
 which_NGs = cfg['which_NGs']
 save_covs = cfg['save_covs']
-hm_recipe = cfg['hm_recipe']
+hm_recipe = 'Krause2017'
 GL_or_LG = cfg['GL_or_LG']
 ell_min = cfg['ell_min']
 ell_max = cfg['ell_max']
@@ -209,7 +209,7 @@ nbl = cfg['nbl']
 zbins = cfg['zbins']
 triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
-use_ray = cfg['use_ray']  # TODO finish this!
+# use_ray = cfg['use_ray']  # TODO finish this!
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 n_samples_wf = cfg['n_samples_wf']
@@ -277,6 +277,7 @@ tkka = initialize_trispectrum()
 
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
+probe_ordering = (('G', 'G'), )
 
 # convenience dictionaries
 ind_dict = {
