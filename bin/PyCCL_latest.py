@@ -45,7 +45,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     # https://ccl.readthedocs.io/en/latest/api/pyccl.halos.halo_model.html?highlight=halomod_Tk3D_SSC#pyccl.halos.halo_model.halomod_Tk3D_SSC)
     # 🐛 bug fixed: normprof shoud be True
 
-    halomod_start_time = time.perf_counter()
+    tkka_start_time = time.perf_counter()
 
     # ! tk3d_SSC computation, from
     # ! https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
@@ -149,7 +149,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                                             use_log=False)
         """
 
-    print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - halomod_start_time))
+    print('trispectrum computed in {:.2f} s'.format(time.perf_counter() - tkka_start_time))
     return tkka_dict
 
 
@@ -230,16 +230,15 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka_dict, f_sky, 
     return cov_ng_3x2pt_dict_8D
 
 
-# ======================================================================================================================
-# ======================================================================================================================
-# ======================================================================================================================
+# ! ====================================================================================================================
+# ! ====================================================================================================================
+# ! ====================================================================================================================
 
-
-# ! POTENTIAL ISSUES:
-# 1. input files (WF, ell, a, pk...)
-# 2. halo model recipe
-# 3. ordering of the resulting covariance matrix
-# * fanstastic collection of notebooks: https://github.com/LSSTDESC/CCLX
+# * some resources
+# fanstastic collection of notebooks: https://github.com/LSSTDESC/CCLX
+# notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
+# Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
+# SSC cov for KiDS: https://github.com/tilmantroester/KiDS-1000xtSZ/blob/master/tools/covariance_NG.py
 
 
 # ! settings
@@ -249,7 +248,6 @@ with open(cfg['fiducial_pars_yml_path']) as f:
     cosmo_pars_dict = yaml.safe_load(f)
 
 ell_grid_recipe = cfg['ell_grid_recipe']
-sky_area_deg2 = cfg['sky_area_deg2']
 probes = cfg['probes']
 which_NGs = cfg['which_NGs']
 save_covs = cfg['save_covs']
@@ -263,7 +261,7 @@ triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 a_grid_increasing_for_ttka = csmlib.z_to_a(z_grid)[::-1]
-f_sky = csmlib.deg2_to_fsky(sky_area_deg2)
+f_sky = csmlib.deg2_to_fsky(cfg['sky_area_deg2'])
 n_samples_wf = cfg['n_samples_wf']
 get_3xtpt_cov_in_4D = cfg['get_3xtpt_cov_in_4D']
 bias_model = cfg['bias_model']
@@ -302,12 +300,14 @@ n_of_z = niz_normalized_arr
 # galaxy bias
 galaxy_bias_2d_array = wf_cl_lib.build_galaxy_bias_2d_arr(bias_values=None, z_values=None, zbins=zbins,
                                                           z_grid=z_grid, bias_model=bias_model,
-                                                          plot_bias=False)
+                                                          plot_bias=True)
 
 # IA bias
 ia_bias_1d_array = wf_cl_lib.build_IA_bias_1d_arr(z_grid, input_lumin_ratio=None, cosmo=cosmo_ccl,
-                                                  A_IA=None, eta_IA=None, beta_IA=None, C_IA=None, growth_factor=None,
-                                                  Omega_m=None)
+                                                  A_IA=cosmo_pars_dict['A_IA'], eta_IA=cosmo_pars_dict['eta_IA'],
+                                                  beta_IA=cosmo_pars_dict['beta_IA'], C_IA=cosmo_pars_dict['C_IA'],
+                                                  growth_factor=None,
+                                                  Omega_m=cosmo_pars_dict['Om_m0'])
 
 # # ! compute tracer objects
 wf_lensing = [ccl.tracers.WeakLensingTracer(cosmo_ccl, dndz=(z_grid, n_of_z[:, zbin_idx]),
@@ -325,11 +325,10 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # cl_GG_3D = wf_cl_lib.cl_PyCCL(wf_galaxy, wf_galaxy, ell_grid, zbins, p_of_k_a=None, cosmo=cosmo_ccl)
 
 
-# notebook for mass_relations: https://github.com/LSSTDESC/CCLX/blob/master/Halo-mass-function-example.ipynb
-# Cl notebook: https://github.com/LSSTDESC/CCL/blob/v2.0.1/examples/3x2demo.ipynb
-# SSC cov for KiDS: https://github.com/tilmantroester/KiDS-1000xtSZ/blob/master/tools/covariance_NG.py
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
+warnings.warn('TESTING, restore probe_ordering')
+probe_ordering = (('G', 'L'),)
 
 # convenience dictionaries
 ind_dict = {
@@ -358,12 +357,10 @@ integration_method_dict = {
         'cNG': 'qag_quad',
     },
     '3x2pt': {
-        'SSC': 'spline',
+        'SSC': 'qag_quad',
         'cNG': 'qag_quad',
     }
 }
-# TODO test if qag_quad works for all cases
-# integration_method_dict = {ket: qag_quad for key in keys()} (pseudocode)
 
 # ! =============================================== compute covs ===============================================
 for probe in probes:
@@ -382,17 +379,17 @@ for probe in probes:
         print(f'\n****************** settings ****************'
               f'\nprobe = {probe}\nwhich_NG = {which_NG}'
               f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
-              f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}'
+              f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}\nzbins = {zbins}'
               f'\n********************************************')
 
         if which_NG == 'SSC':
             ng_function = compute_cov_SSC_ccl
-            tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='SSC')
         elif which_NG == 'cNG':
             ng_function = compute_cov_cNG_ccl
-            tkka_dict = initialize_trispectrum(probe_ordering, which_tkka='cNG')
         else:
             raise ValueError('which_NG must be either SSC or cNG')
+
+        tkka_dict = initialize_trispectrum(probe_ordering, which_tkka=which_NG)
 
         if probe in ['LL', 'GG']:
             assert probe[0] == probe[1], 'probe must be either LL or GG'
@@ -407,7 +404,7 @@ for probe in probes:
             cov_ng_4D = ng_function(cosmo_ccl,
                                     kernel_A=kernel_A, kernel_B=kernel_B,
                                     kernel_C=kernel_C, kernel_D=kernel_D,
-                                    ell=ell_grid, tkka_dict=tkka_dict[probe[0], probe[1], probe[0], probe[1]],
+                                    ell=ell_grid, tkka=tkka_dict[probe[0], probe[1], probe[0], probe[1]],
                                     f_sky=f_sky,
                                     ind_AB=ind_AB, ind_CD=ind_CD,
                                     integration_method=integration_method_dict[probe][which_NG])
