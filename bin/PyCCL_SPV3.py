@@ -105,7 +105,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                                             is_number_counts3=False,
                                                                                             is_number_counts4=False,
                                                                                             p_of_k_a=None, lk_arr=None,
-                                                                                            a_arr=a_grid_increasing, extrap_order_lok=1,
+                                                                                            a_arr=a_grid_increasing_forttka, extrap_order_lok=1,
                                                                                             extrap_order_hik=1,
                                                                                             use_log=False)
         """
@@ -238,7 +238,7 @@ zbins = general_cfg['zbins']
 triu_tril = covariance_cfg['triu_tril']
 row_col_major = covariance_cfg['row_col_major']
 # z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
-# a_grid_increasing = (1 / (1 + z_grid))[::-1][::6]
+# a_grid_increasing_forttka = (1 / (1 + z_grid))[::-1][::6]
 warnings.warn('increase the number of points in the grid, for now Im only testing if this works')
 f_sky = covariance_cfg['fsky']
 # n_samples_wf = cfg['n_samples_wf']

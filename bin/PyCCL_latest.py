@@ -17,9 +17,14 @@ from tqdm import tqdm
 # get project directory adn import useful modules
 project_path = Path.cwd().parent
 
-sys.path.append(f'../lib')
+sys.path.append(f'../../common_lib_and_cfg/common_lib')
 import my_module as mm
+import cosmo_lib as csmlib
+
+sys.path.append(f'../../SSC_restructured_v2/bin')
 import ell_values as ell_utils
+
+sys.path.append(f'../../cl_v2/bin')
 import wf_cl_lib
 
 matplotlib.use('Qt5Agg')
@@ -83,7 +88,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                        prof34_2pt=prof_2pt_dict[C, D],
                                                                        normprof1=True, normprof2=True,
                                                                        normprof3=True, normprof4=True,
-                                                                       lk_arr=None, a_arr=a_grid_increasing,
+                                                                       lk_arr=None, a_arr=a_grid_increasing_for_ttka,
                                                                        p_of_k_a=None)
         else:
             warnings.warn('using the same halo profile (NFW) for all probes, this is not quite correct')
@@ -93,7 +98,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                               prof12_2pt=None, prof34_2pt=None,
                                               normprof1=True, normprof2=True,
                                               normprof3=True, normprof4=True,
-                                              lk_arr=None, a_arr=a_grid_increasing, p_of_k_a=None)
+                                              lk_arr=None, a_arr=a_grid_increasing_for_ttka, p_of_k_a=None)
             for A, B in probe_ordering:
                 for C, D in probe_ordering:
                     tkka_dict[A, B, C, D] = tkka
@@ -114,7 +119,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                   normprof2=True,
                                                                   normprof3=True,
                                                                   normprof4=True,
-                                                                  lk_arr=None, a_arr=a_grid_increasing,
+                                                                  lk_arr=None, a_arr=a_grid_increasing_for_ttka,
                                                                   use_log=False)
 
 
@@ -139,7 +144,7 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                                                                                             is_number_counts3=False,
                                                                                             is_number_counts4=False,
                                                                                             p_of_k_a=None, lk_arr=None,
-                                                                                            a_arr=a_grid_increasing, extrap_order_lok=1,
+                                                                                            a_arr=a_grid_increasing_for_ttka, extrap_order_lok=1,
                                                                                             extrap_order_hik=1,
                                                                                             use_log=False)
         """
@@ -238,9 +243,10 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, kernel_dict, ell, tkka_dict, f_sky, 
 
 
 # ! settings
-# with open('../../exact_SSC/config/cfg_exactSSC.yml') as f:
-with open('../config/cfg_exactSSC_here.yml') as f:
+with open('../../exact_SSC/config/cfg_exactSSC_ISTF.yml') as f:
     cfg = yaml.safe_load(f)
+with open(cfg['fiducial_pars_yml_path']) as f:
+    cosmo_pars_dict = yaml.safe_load(f)
 
 ell_grid_recipe = cfg['ell_grid_recipe']
 sky_area_deg2 = cfg['sky_area_deg2']
@@ -256,9 +262,8 @@ zbins = cfg['zbins']
 triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
-a_grid_increasing = (1 / (1 + z_grid))[::-1][::6]
-warnings.warn('increase the number of points in the grid, for now Im only testing if this works')
-f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
+a_grid_increasing_for_ttka = csmlib.z_to_a(z_grid)[::-1]
+f_sky = csmlib.deg2_to_fsky(sky_area_deg2)
 n_samples_wf = cfg['n_samples_wf']
 get_3xtpt_cov_in_4D = cfg['get_3xtpt_cov_in_4D']
 bias_model = cfg['bias_model']
@@ -267,7 +272,6 @@ bias_model = cfg['bias_model']
 # ======================================================================================================================
 # ======================================================================================================================
 # ======================================================================================================================
-
 
 # get number of redshift pairs
 zpairs_auto, zpairs_cross, zpairs_3x2pt = mm.get_zpairs(zbins)
@@ -281,9 +285,13 @@ assert GL_or_LG == 'GL', 'you should update ind_cross (used in ind_dict) for GL,
 ell_grid, _ = ell_utils.compute_ells(nbl, ell_min, ell_max, ell_grid_recipe)
 np.savetxt(f'{project_path}/output/ell_values/ell_values_nbl{nbl}.txt', ell_grid)
 
-# Create new Cosmology object with a given set of parameters. This keeps track of previously-computed cosmological
-# functions
-cosmo_ccl = wf_cl_lib.instantiate_ISTFfid_PyCCL_cosmo_obj()
+# Create new Cosmology object with a given set of parameters
+cosmo_ccl = wf_cl_lib.instantiate_PyCCL_cosmo_obj(cosmo_pars_dict['Om_m0'], cosmo_pars_dict['Om_b0'],
+                                                  cosmo_pars_dict['Om_Lambda0'],
+                                                  cosmo_pars_dict['w_0'], cosmo_pars_dict['w_a'],
+                                                  cosmo_pars_dict['h_0'],
+                                                  cosmo_pars_dict['sigma_8'], cosmo_pars_dict['n_s'],
+                                                  cosmo_pars_dict['m_nu'])
 
 # source redshift distribution, default ISTF values for bin edges & analytical prescription for the moment
 niz_unnormalized_arr = np.asarray(
@@ -350,22 +358,20 @@ integration_method_dict = {
         'cNG': 'qag_quad',
     },
     '3x2pt': {
-        'SSC': 'qag_quad',
+        'SSC': 'spline',
         'cNG': 'qag_quad',
     }
 }
 # TODO test if qag_quad works for all cases
 # integration_method_dict = {ket: qag_quad for key in keys()} (pseudocode)
 
+# ! =============================================== compute covs ===============================================
 for probe in probes:
     for which_NG in which_NGs:
 
         assert probe in ['LL', 'GG', '3x2pt'], 'probe must be either LL, GG, or 3x2pt'
         assert which_NG in ['SSC', 'cNG'], 'which_NG must be either SSC or cNG'
         assert ell_grid_recipe in ['ISTF', 'ISTNL'], 'ell_grid_recipe must be either ISTF or ISTNL'
-
-        if ell_grid_recipe == 'ISTNL' and nbl != 20:
-            print('Warning: ISTNL uses 20 ell bins')
 
         if probe == 'LL':
             kernel = wf_lensing
@@ -378,8 +384,6 @@ for probe in probes:
               f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
               f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}'
               f'\n********************************************')
-
-        # ! =============================================== compute covs ===============================================
 
         if which_NG == 'SSC':
             ng_function = compute_cov_SSC_ccl
