@@ -277,7 +277,7 @@ tkka = initialize_trispectrum()
 
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
-probe_ordering = (('G', 'G'), )
+probe_ordering = (('G', 'L'), )
 
 # convenience dictionaries
 ind_dict = {
