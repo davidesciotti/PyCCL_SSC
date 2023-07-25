@@ -328,7 +328,7 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 warnings.warn('TESTING, restore probe_ordering')
-probe_ordering = (('G', 'L'),)
+probe_ordering = (('G', 'G'),)
 
 # convenience dictionaries
 ind_dict = {
