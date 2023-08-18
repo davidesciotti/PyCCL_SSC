@@ -22,6 +22,7 @@ ray.init()
 project_path = Path.cwd().parent
 
 sys.path.append(f'../../common_lib_and_cfg/common_lib')
+sys.path.append(f'../../common_lib_and_cfg/common_lib')
 import my_module as mm
 import cosmo_lib
 
