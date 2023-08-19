@@ -50,13 +50,14 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     # ! tk3d_SSC computation, from
     # ! https://github.com/LSSTDESC/CCL/blob/4df2a29eca58d7cd171bc1986e059fd35f425d45/benchmarks/test_covariances.py
     # ! see also https://github.com/LSSTDESC/CCLX/blob/master/Halo-model-Pk.ipynb
-    mass_def = ccl.halos.MassDef200m()  # default is (c_m = 'Duffy08')
-    concentration = ccl.halos.ConcentrationDuffy08(mass_def)
-    halo_mass_func = ccl.halos.MassFuncTinker10(cosmo_ccl, mass_def=mass_def)
-    halo_bias_func = ccl.halos.HaloBiasTinker10(cosmo_ccl, mass_def=mass_def)
-    halo_profile_nfw = ccl.halos.HaloProfileNFW(concentration)
-    halo_profile_hod = ccl.halos.HaloProfileHOD(concentration)  # default has is_number_counts=True
-    hm_calculator = ccl.halos.HMCalculator(cosmo_ccl, halo_mass_func, halo_bias_func, mass_def=mass_def)
+    warnings.warn('check_ 200c or 200m?')
+    mass_def = ccl.halos.MassDef200c  # default is (c_m = 'Duffy08')
+    concentration = ccl.halos.ConcentrationDuffy08()
+    halo_mass_func = ccl.halos.MassFuncTinker10(mass_def=mass_def)
+    halo_bias_func = ccl.halos.HaloBiasTinker10(mass_def=mass_def)
+    halo_profile_nfw = ccl.halos.HaloProfileNFW(mass_def='200c', concentration=concentration)
+    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def='200c', concentration=concentration)  # default has is_number_counts=True
+    hm_calculator = ccl.halos.HMCalculator(mass_function=halo_mass_func, halo_bias=halo_bias_func, mass_def=mass_def)
     tkka_dict = {}
 
     halo_profile_dict = {
@@ -80,24 +81,24 @@ def initialize_trispectrum(probe_ordering, which_tkka):
                 for C, D in probe_ordering:
                     print(f'Computing tkka {which_tkka} for {A}{B}{C}{D}')
                     tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                                                       prof1=halo_profile_dict[A],
+                                                                       prof=halo_profile_dict[A],
                                                                        prof2=halo_profile_dict[B],
                                                                        prof3=halo_profile_dict[C],
                                                                        prof4=halo_profile_dict[D],
                                                                        prof12_2pt=prof_2pt_dict[A, B],
                                                                        prof34_2pt=prof_2pt_dict[C, D],
-                                                                       normprof1=True, normprof2=True,
-                                                                       normprof3=True, normprof4=True,
+                                                                       # normprof1=True, normprof2=True,
+                                                                       # normprof3=True, normprof4=True,
                                                                        lk_arr=None, a_arr=a_grid_increasing_for_ttka,
                                                                        p_of_k_a=None)
         else:
             warnings.warn('using the same halo profile (NFW) for all probes, this is not quite correct')
             tkka = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                              prof1=halo_profile_nfw, prof2=halo_profile_nfw,
+                                              prof=halo_profile_nfw, prof2=halo_profile_nfw,
                                               prof3=halo_profile_nfw, prof4=halo_profile_nfw,
                                               prof12_2pt=None, prof34_2pt=None,
-                                              normprof1=True, normprof2=True,
-                                              normprof3=True, normprof4=True,
+                                              # normprof1=True, normprof2=True,
+                                              # normprof3=True, normprof4=True,
                                               lk_arr=None, a_arr=a_grid_increasing_for_ttka, p_of_k_a=None)
             for A, B in probe_ordering:
                 for C, D in probe_ordering:
@@ -163,12 +164,12 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
     cov_ssc = Parallel(n_jobs=-1, backend='threading')(
         delayed(ccl.covariances.angular_cl_cov_SSC)(cosmo,
-                                                    cltracer1=kernel_A[ind_AB[ij, -2]],
-                                                    cltracer2=kernel_B[ind_AB[ij, -1]],
-                                                    ell=ell, tkka=tkka,
+                                                    tracer1=kernel_A[ind_AB[ij, -2]],
+                                                    tracer2=kernel_B[ind_AB[ij, -1]],
+                                                    ell=ell, t_of_kk_a=tkka,
                                                     sigma2_B=None, fsky=f_sky,
-                                                    cltracer3=kernel_C[ind_CD[kl, -2]],
-                                                    cltracer4=kernel_D[ind_CD[kl, -1]],
+                                                    tracer3=kernel_C[ind_CD[kl, -2]],
+                                                    tracer4=kernel_D[ind_CD[kl, -1]],
                                                     ell2=None,
                                                     integration_method=integration_method)
         for kl in tqdm(range(zpairs_CD))
@@ -328,7 +329,7 @@ wf_galaxy = [ccl.tracers.NumberCountsTracer(cosmo_ccl, has_rsd=False, dndz=(z_gr
 # covariance ordering stuff
 probe_ordering = (('L', 'L'), (GL_or_LG[0], GL_or_LG[1]), ('G', 'G'))
 warnings.warn('TESTING, restore probe_ordering')
-probe_ordering = (('G', 'G'),)
+probe_ordering = (('G', 'L'),)
 
 # convenience dictionaries
 ind_dict = {
@@ -380,6 +381,7 @@ for probe in probes:
               f'\nprobe = {probe}\nwhich_NG = {which_NG}'
               f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
               f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}\nzbins = {zbins}'
+              f'\ncfg["use_HOD_for_GCph"]'
               f'\n********************************************')
 
         if which_NG == 'SSC':
