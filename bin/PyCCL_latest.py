@@ -56,10 +56,9 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     halo_mass_func = ccl.halos.MassFuncTinker10(mass_def=mass_def)
     halo_bias_func = ccl.halos.HaloBiasTinker10(mass_def=mass_def)
     halo_profile_nfw = ccl.halos.HaloProfileNFW(mass_def=mass_def, concentration=concentration)
-    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def=mass_def,
-                                                concentration=concentration)  # default has is_number_counts=True
+    # ccl.halos.HaloProfileHOD(is_number_counts=True) by default
+    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def=mass_def,concentration=concentration)
     hm_calculator = ccl.halos.HMCalculator(mass_function=halo_mass_func, halo_bias=halo_bias_func, mass_def=mass_def)
-    tkka_dict = {}
 
     if cfg['use_HOD_for_GCph']:
         # this is the correct way to initialize the trispectrum, but the code does not run.
@@ -88,6 +87,8 @@ def initialize_trispectrum(probe_ordering, which_tkka):
             ('G', 'G'): None,
         }
 
+    # store the trispectrum for the various probes in a dictionary
+    tkka_dict = {}
     if which_tkka == 'SSC':
 
         for A, B in probe_ordering:
@@ -383,8 +384,8 @@ for probe in probes:
               f'\nprobe = {probe}\nwhich_NG = {which_NG}'
               f'\nintegration_method = {integration_method_dict[probe][which_NG]}'
               f'\nwhich_ells = {ell_grid_recipe}\nnbl = {nbl}\nzbins = {zbins}'
-              f'\ncfg["use_HOD_for_GCph"]'
-              f'\n********************************************')
+              f'\nuse_HOD_for_GCph = {cfg["use_HOD_for_GCph"]}'
+              f'\n********************************************\n')
 
         if which_NG == 'SSC':
             ng_function = compute_cov_SSC_ccl
