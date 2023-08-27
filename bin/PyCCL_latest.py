@@ -398,11 +398,11 @@ for probe in probes:
             filename = f'cov_PyCCL_{which_NG}_{probe}_nbl{nbl}_ellmax{ell_max}_HMrecipe{hm_recipe}'
 
             np.savez_compressed(f'{output_folder}/{filename}_4D.npz', cov_ng_4D)
-            # cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
+            cov_6D = mm.cov_4D_to_6D(cov_ng_4D, nbl, zbins, 'LL', ind)
 
             # mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
-assert 1 > 2, 'end of script'
+# assert 1 > 2, 'end of script'
 
 ind = np.load(
     f'{project_path.parent}/common_data/ind_files/variable_zbins/{triu_or_tril}_{row_col}-wise/indices_{triu_or_tril}_{row_col}-wise_zbins{zbins}.dat')
