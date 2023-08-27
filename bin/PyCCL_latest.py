@@ -17,18 +17,18 @@ ray.init()
 # get project directory adn import useful modules
 project_path = Path.cwd().parent
 
-sys.path.append(f'../../common_data/common_lib')
+sys.path.append(f'../../common_lib_and_cfg/common_lib')
 import my_module as mm
 import cosmo_lib
 
-sys.path.append(f'../../common_data/common_config')
+sys.path.append(f'../../common_lib_and_cfg/common_config')
 import ISTF_fid_params as ISTF_fid
 import mpl_cfg
 
 sys.path.append(f'../../SSC_restructured_v2/bin')
 import ell_values as ell_utils
 
-sys.path.append(f'../../cl_v2/lib')
+sys.path.append(f'../../cl_v2/bin')
 import wf_cl_lib
 
 matplotlib.use('Qt5Agg')
@@ -69,6 +69,7 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, int
     # TODO finish this function
     cov_SSC_3x2pt_dict_10D = {}
     for A, B, C, D in probe_combinations_3x2pt:
+        A, B, C, D = 'G', 'L', 'G', 'L'  # ! debug...
         print('3x2pt: working on probe combination ', A, B, C, D)
         cov_SSC_3x2pt_dict_10D[A, B, C, D] = compute_nongaussian_cov_ccl(cosmo,
                                                                          probe_wf_dict[A], probe_wf_dict[B],
@@ -91,8 +92,8 @@ def compute_3x2pt_PyCCL(ng_function, cosmo, probe_wf_dict, ell, tkka, f_sky, int
     return cov_SSC_3x2pt_dict_10D
 
 
-compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
-compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
+# compute_SSC_PyCCL_ray = ray.remote(compute_SSC_PyCCL)
+# compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -105,7 +106,7 @@ compute_cNG_PyCCL_ray = ray.remote(compute_cNG_PyCCL)
 
 
 # ! settings
-with open('../../exact_SSC/config/config.yml') as f:
+with open('../../exact_SSC/config/cfg_exactSSC_ISTF.yml') as f:
     cfg = yaml.safe_load(f)
 
 ell_grid_recipe = cfg['ell_grid_recipe']
@@ -113,7 +114,7 @@ sky_area_deg2 = cfg['sky_area_deg2']
 probes = cfg['probes']
 which_NGs = cfg['which_NGs']
 save_covs = cfg['save_covs']
-hm_recipe = cfg['hm_recipe']
+hm_recipe = 'Krause2017'
 GL_or_LG = cfg['GL_or_LG']
 ell_min = cfg['ell_min']
 ell_max = cfg['ell_max']
@@ -121,7 +122,7 @@ nbl = cfg['nbl']
 zbins = cfg['zbins']
 triu_tril = cfg['triu_tril']
 row_col_major = cfg['row_col_major']
-use_ray = cfg['use_ray']  # TODO finish this!
+use_ray = False  # TODO finish this!
 z_grid = np.linspace(cfg['z_min_sigma2'], cfg['z_max_sigma2'], cfg['z_steps_sigma2'])
 f_sky = sky_area_deg2 * (np.pi / 180) ** 2 / (4 * np.pi)
 # ! settings
