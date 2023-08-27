@@ -56,53 +56,55 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     halo_mass_func = ccl.halos.MassFuncTinker10(mass_def=mass_def)
     halo_bias_func = ccl.halos.HaloBiasTinker10(mass_def=mass_def)
     halo_profile_nfw = ccl.halos.HaloProfileNFW(mass_def=mass_def, concentration=concentration)
-    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def=mass_def, concentration=concentration)  # default has is_number_counts=True
+    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def=mass_def,
+                                                concentration=concentration)  # default has is_number_counts=True
     hm_calculator = ccl.halos.HMCalculator(mass_function=halo_mass_func, halo_bias=halo_bias_func, mass_def=mass_def)
     tkka_dict = {}
 
-    halo_profile_dict = {
-        'L': halo_profile_nfw,
-        'G': halo_profile_hod,
-    }
+    if cfg['use_HOD_for_GCph']:
+        # this is the correct way to initialize the trispectrum, but the code does not run.
+        # Asked David Alonso about this.
+        halo_profile_dict = {
+            'L': halo_profile_nfw,
+            'G': halo_profile_hod,
+        }
 
-    prof_2pt_dict = {
-        ('L', 'L'): ccl.halos.Profile2pt(),
-        ('G', 'L'): ccl.halos.Profile2pt(),
-        # see again https://github.com/LSSTDESC/CCLX/blob/master/Halo-model-Pk.ipynb
-        ('G', 'G'): ccl.halos.Profile2ptHOD(),
-    }
+        prof_2pt_dict = {
+            ('L', 'L'): ccl.halos.Profile2pt(),
+            ('G', 'L'): ccl.halos.Profile2pt(),
+            # see again https://github.com/LSSTDESC/CCLX/blob/master/Halo-model-Pk.ipynb
+            ('G', 'G'): ccl.halos.Profile2ptHOD(),
+        }
+    else:
+        warnings.warn('using the same halo profile (NFW) for all probes, this is not quite correct')
+        halo_profile_dict = {
+            'L': halo_profile_nfw,
+            'G': halo_profile_nfw,
+        }
+
+        prof_2pt_dict = {
+            ('L', 'L'): None,
+            ('G', 'L'): None,
+            ('G', 'G'): None,
+        }
 
     if which_tkka == 'SSC':
 
-        if cfg['use_HOD_for_GCph']:
-            # this is the correct way to initialize the trispectrum, but the code does not run.
-            # Asked David Alonso about this.
-            for A, B in probe_ordering:
-                for C, D in probe_ordering:
-                    print(f'Computing tkka {which_tkka} for {A}{B}{C}{D}')
-                    tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                                                       prof=halo_profile_dict[A],
-                                                                       prof2=halo_profile_dict[B],
-                                                                       prof3=halo_profile_dict[C],
-                                                                       prof4=halo_profile_dict[D],
-                                                                       prof12_2pt=prof_2pt_dict[A, B],
-                                                                       prof34_2pt=prof_2pt_dict[C, D],
-                                                                       # normprof1=True, normprof2=True,
-                                                                       # normprof3=True, normprof4=True,
-                                                                       lk_arr=None, a_arr=a_grid_increasing_for_ttka,
-                                                                       p_of_k_a=None)
-        else:
-            warnings.warn('using the same halo profile (NFW) for all probes, this is not quite correct')
-            tkka = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
-                                              prof=halo_profile_nfw, prof2=halo_profile_nfw,
-                                              prof3=halo_profile_nfw, prof4=halo_profile_nfw,
-                                              prof12_2pt=None, prof34_2pt=None,
-                                              # normprof1=True, normprof2=True,
-                                              # normprof3=True, normprof4=True,
-                                              lk_arr=None, a_arr=a_grid_increasing_for_ttka, p_of_k_a=None)
-            for A, B in probe_ordering:
-                for C, D in probe_ordering:
-                    tkka_dict[A, B, C, D] = tkka
+        for A, B in probe_ordering:
+            for C, D in probe_ordering:
+                print(f'Computing tkka {which_tkka} for {A}{B}{C}{D}')
+                tkka_dict[A, B, C, D] = ccl.halos.halomod_Tk3D_SSC(cosmo=cosmo_ccl, hmc=hm_calculator,
+                                                                   prof=halo_profile_dict[A],
+                                                                   prof2=halo_profile_dict[B],
+                                                                   prof3=halo_profile_dict[C],
+                                                                   prof4=halo_profile_dict[D],
+                                                                   prof12_2pt=prof_2pt_dict[A, B],
+                                                                   prof34_2pt=prof_2pt_dict[C, D],
+                                                                   # normprof1=True, normprof2=True,
+                                                                   # normprof3=True, normprof4=True,
+                                                                   lk_arr=None, a_arr=a_grid_increasing_for_ttka,
+                                                                   p_of_k_a=None)
+
 
     # TODO test tkka for cNG
     elif which_tkka == 'cNG':
