@@ -55,8 +55,8 @@ def initialize_trispectrum(probe_ordering, which_tkka):
     concentration = ccl.halos.ConcentrationDuffy08()
     halo_mass_func = ccl.halos.MassFuncTinker10(mass_def=mass_def)
     halo_bias_func = ccl.halos.HaloBiasTinker10(mass_def=mass_def)
-    halo_profile_nfw = ccl.halos.HaloProfileNFW(mass_def='200c', concentration=concentration)
-    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def='200c', concentration=concentration)  # default has is_number_counts=True
+    halo_profile_nfw = ccl.halos.HaloProfileNFW(mass_def=mass_def, concentration=concentration)
+    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def=mass_def, concentration=concentration)  # default has is_number_counts=True
     hm_calculator = ccl.halos.HMCalculator(mass_function=halo_mass_func, halo_bias=halo_bias_func, mass_def=mass_def)
     tkka_dict = {}
 
