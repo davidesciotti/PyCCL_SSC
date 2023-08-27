@@ -125,8 +125,8 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
                                                                                     cltracer4=kernel_D[ind_CD[kl, -1]],
                                                                                     ell2=None,
                                                                                     integration_method=integration_method)
-                                        for kl in range(zpairs_CD)
-                                        for ij in tqdm(range(zpairs_AB)))
+                                        for kl in tqdm(range(zpairs_CD))
+                                        for ij in range(zpairs_AB))
     print(f'parallel version took {time.perf_counter() - start_time} seconds')
 
     cov_ng = np.array(cov_ng).transpose(1, 2, 0).reshape(nbl, nbl, zpairs_AB, zpairs_CD)
