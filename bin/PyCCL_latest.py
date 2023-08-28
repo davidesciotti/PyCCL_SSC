@@ -136,6 +136,7 @@ def compute_cov_SSC_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka
 
 def compute_cov_cNG_ccl(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky,
                         ind_AB, ind_CD, integration_method='spline'):
+    # TODO unify this with compute_cov_SSC_ccl
     zpairs_AB = ind_AB.shape[0]
     zpairs_CD = ind_CD.shape[0]
 
@@ -373,13 +374,16 @@ for probe in probes:
             ind_CD = ind_dict[probe[0] + probe[1]]
 
             cov_ng_4D = ng_function(cosmo_ccl,
-                                    kernel_A=kernel_A, kernel_B=kernel_B,
-                                    kernel_C=kernel_C, kernel_D=kernel_D,
+                                    kernel_A=kernel_A,
+                                    kernel_B=kernel_B,
+                                    kernel_C=kernel_C,
+                                    kernel_D=kernel_D,
                                     ell=ell_grid, tkka=tkka, f_sky=f_sky,
                                     ind_AB=ind_AB, ind_CD=ind_CD,
                                     integration_method=integration_method_dict[probe][which_NG])
 
         elif probe == '3x2pt':
+            # TODO remove this if statement and use the same code for all probes
             cov_ng_4D = compute_3x2pt_PyCCL(ng_function=ng_function, cosmo=cosmo_ccl,
                                             kernel_dict=kernel_dict,
                                             ell=ell_grid, tkka=tkka, f_sky=f_sky,
@@ -402,7 +406,7 @@ for probe in probes:
 
             # mm.test_folder_content(output_folder, output_folder + 'benchmarks', 'npy', verbose=False, rtol=1e-10)
 
-# assert 1 > 2, 'end of script'
+assert 1 > 2, 'end of script'
 
 ind = np.load(
     f'{project_path.parent}/common_data/ind_files/variable_zbins/{triu_or_tril}_{row_col}-wise/indices_{triu_or_tril}_{row_col}-wise_zbins{zbins}.dat')
