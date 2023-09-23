@@ -1,6 +1,7 @@
 import pickle
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -39,6 +40,7 @@ plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 ###############################################################################
 ###############################################################################
 
+warnings.warn('THIS SCRIPT CAN PROBABLY BE DISCARDED...')
 
 def compute_SSC_PyCCL(cosmo, kernel_A, kernel_B, kernel_C, kernel_D, ell, tkka, f_sky, integration_method='spline'):
     cov_SSC_6D = np.zeros((nbl, nbl, zbins, zbins, zbins, zbins))

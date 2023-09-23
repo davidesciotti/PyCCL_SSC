@@ -70,6 +70,16 @@ def initialize_trispectrum():
     else:
         raise ValueError('Wrong choice of hm_recipe: it must be either "KiDS1000" or "Krause2017".')
 
+    mass_def = ccl.halos.MassDef200c  # default is (c_m = 'Duffy08')
+    concentration = ccl.halos.ConcentrationDuffy08()
+    halo_mass_func = ccl.halos.MassFuncTinker10(mass_def=mass_def)
+    halo_bias_func = ccl.halos.HaloBiasTinker10(mass_def=mass_def)
+    halo_profile_nfw = ccl.halos.HaloProfileNFW(mass_def=mass_def, concentration=concentration)
+    # ccl.halos.HaloProfileHOD(is_number_counts=True) by default
+    halo_profile_hod = ccl.halos.HaloProfileHOD(mass_def=mass_def,concentration=concentration)
+    hm_calculator = ccl.halos.HMCalculator(mass_function=halo_mass_func, halo_bias=halo_bias_func, mass_def=mass_def)
+
+
     # TODO pass mass_def object? plus, understand what exactly is mass_def_strict
 
     # mass function
