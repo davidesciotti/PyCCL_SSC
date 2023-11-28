@@ -17,21 +17,23 @@ ray.init()
 project_path = Path.cwd().parent
 
 sys.path.append(f'{project_path.parent}/common_data/common_lib')
+sys.path.insert(1, f'{project_path.parent}/PyCCL_SSC/lib')
+sys.path.insert(1, f'{project_path.parent}/PyCCL_SSC/config')
 import my_module as mm
 
 sys.path.append(f'{project_path.parent}/SSC_restructured_v2/bin')
-import ell_values_running as ell_utils
+import ell_values as ell_utils
 
 sys.path.append(f'{project_path.parent}/common_data/common_config')
 import ISTF_fid_params as ISTF_fid
-import mpl_cfg
+#import mpl_cfg
 
 sys.path.append(f'{project_path}/config')
 import PyCCL_config as cfg
 
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 start_time = time.perf_counter()
-plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
+#plt.rcParams.update(mpl_cfg.mpl_rcParams_dict)
 
 
 ###############################################################################
@@ -166,7 +168,7 @@ b_array = np.asarray([bias(z, zbins_edges) for z in ztab])
 wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
        for iz in range(zbins)]
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
-                                      mag_bias=None) for iz in range(zbins)]
+                                      mag_bias="Pippo") for iz in range(zbins)]
 
 # save wf and cl for validation
 # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
