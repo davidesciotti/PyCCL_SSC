@@ -63,6 +63,22 @@ def cl_PyCCL(cosmo, kernel_A, kernel_B, ell, Pk, zbins):
                        for jz in range(zbins)])
     return result
 
+def magbias_of_z_fs2_fit(z, maglim, poly_fit_values=None):
+    # from the MCMC for SPV3 google doc: https://docs.google.com/document/d/1WCGhiBrlTsvl1VS-2ngpjirMnAS-ahtnoGX_7h8JoQU/edit
+    if maglim == 24.5:
+        b0_mag, b1_mag, b2_mag, b3_mag = -1.50685, 1.35034, 0.08321, 0.04279
+    elif maglim == 23:
+        b0_mag, b1_mag, b2_mag, b3_mag = -2.34493, 3.73098, 0.12500, -0.01788
+    else:
+        raise ValueError('maglim, i.e. the limiting magnitude of the GCph sample, must be 23 or 24.5')
+
+    if poly_fit_values is not None:
+        assert len(poly_fit_values) == 4, 'a list of 4 best-fit values must be passed'
+        np.testing.assert_allclose(np.array(poly_fit_values), np.array((b0_mag, b1_mag, b2_mag, b3_mag)), atol=0,
+                                   rtol=1e-5)
+
+    return b0_mag + (b1_mag * z) + (b2_mag * z ** 2) + (b3_mag * z ** 3)
+
 
 ###############################################################################
 ###############################################################################
@@ -104,7 +120,9 @@ cosmo = ccl.Cosmology(Omega_c=Om_c0, Omega_b=ISTF_fid.primary['Om_b0'], w0=ISTF_
 zmin, zmax, dz = 0.001, 2.5, 0.001
 ztab = np.arange(zmin, zmax, dz)  # ! should it start from 0 instead?
 
-
+mag_bias_1d = 2 / 5 * (1 - magbias_of_z_fs2_fit(ztab, maglim=24.5))
+mag_bias_tuple = (ztab, mag_bias_1d)
+print(mag_bias_tuple)
 # for CosmoLike
 # zmin, zmax, zsteps = 0.001, 4., 10_000
 # ztab = np.linspace(zmin, zmax, zsteps)  # ! should it start from 0 instead?
@@ -168,7 +186,7 @@ b_array = np.asarray([bias(z, zbins_edges) for z in ztab])
 wil = [ccl.WeakLensingTracer(cosmo, dndz=(ztab, nziEuclid[iz]), ia_bias=(IAFILE[:, 0], FIAz), use_A_ia=False)
        for iz in range(zbins)]
 wig = [ccl.tracers.NumberCountsTracer(cosmo, has_rsd=False, dndz=(ztab, nziEuclid[iz]), bias=(ztab, b_array),
-                                      mag_bias="Pippo") for iz in range(zbins)]
+                                      mag_bias=mag_bias_tuple) for iz in range(zbins)]
 
 # save wf and cl for validation
 # np.save(project_path / 'output/wl_and_cl_validation/ztab.npy', ztab)
