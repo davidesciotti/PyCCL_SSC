@@ -31,7 +31,7 @@ is_number_counts_12 = False
 is_number_counts_34 = True
 k_units = '1overMpc'
 which_su_resp = 'spv3_vincenzo'
-probe_block = 'LLGL'
+probe_block = 'LLGG'
 
 # pyccl responses from halo model
 ccl_responses_path = f'{ROOT}/Spaceborne/jobs/SPV3_magcut_zcut_thesis/output/Flagship_2/pyccl_responses'
@@ -88,7 +88,7 @@ zmax_su = np.max(z_arr_su)
 z_arr_hm_trimmed = z_arr_hm[z_arr_hm <= zmax_su]
 
 # pick a redshift and get the corresponding index
-z = 0
+z = 3
 z_idx_su = np.argmin(np.abs(z_arr_su - z))
 z_idx_hm = np.argmin(np.abs(z_arr_hm_trimmed - z))
 
@@ -107,9 +107,11 @@ plt.plot(k_1overMpc_hm, dpk34[:, a_idx_hm] / pk2d[:, a_idx_hm],
 # plt.plot(k_1overMpc_hm, dpk12[:, a_idx_hm] / pk1d, label=f'dpk12/pk1d, a={a_arr[a_idx_hm]:.2f}, z={z_hm:.2f}', alpha=0.5)
 # plt.plot(k_1overMpc_hm, dpk34[:, a_idx_hm] / pk1d, label=f'dpk34/pk1d, a={a_arr[a_idx_hm]:.2f}, z={z_hm:.2f}', ls='--', alpha=0.5)
 plt.plot(k_1overMpc_su, r1_mm_su[:, z_idx_su], label=f'R1_mm_su, a={a_arr[a_idx_hm]:.2f}, z={z_su:.2f}', alpha=0.5)
+plt.plot(k_1overMpc_su, r1_gm_su[:, z_idx_su], label=f'R1_gm_su, a={a_arr[a_idx_hm]:.2f}, z={z_su:.2f}', alpha=0.5)
+plt.plot(k_1overMpc_su, r1_gg_su[:, z_idx_su], label=f'R1_gg_su, a={a_arr[a_idx_hm]:.2f}, z={z_su:.2f}', alpha=0.5)
 plt.legend()
-plt.xlim(1e-2, 2)
-plt.ylim(0., 7)
+plt.xlim(1e-2, 8)
+plt.ylim(-5, 7)
 plt.xscale('log')
 plt.xlabel('k [1/Mpc]')
 plt.ylabel('$\partial \ln P_{mm} / \partial \ln \delta_b$')
